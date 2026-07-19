@@ -1,5 +1,7 @@
 # Target Mac DFU
 
+[English](README.en.md) · **Русский**
+
 [![Build](https://github.com/Sampsih/target-mac-dfu/actions/workflows/build.yml/badge.svg)](https://github.com/Sampsih/target-mac-dfu/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/Sampsih/target-mac-dfu)](https://github.com/Sampsih/target-mac-dfu/releases/latest)
 ![macOS](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
@@ -7,7 +9,7 @@
 
 Приложение для macOS, которое помогает отправить подключённый Mac в режим DFU одной кнопкой, подобрать и скачать IPSW, а затем выполнить полный Restore.
 
-![Экран автоматического DFU](docs/images/dfu.png)
+![Обзор Target Mac DFU](docs/images/overview.png)
 
 > [!CAUTION]
 > Restore полностью удаляет данные с восстанавливаемого Mac. Перед запуском убедитесь, что выбран правильный компьютер и важные данные сохранены.
@@ -23,6 +25,12 @@
 - история операций, журналы и диагностический архив;
 - русский и английский интерфейс;
 - демо-режим для знакомства без подключённого Mac.
+
+## Скриншоты
+
+| DFU одним нажатием | Настройки и источники IPSW |
+| --- | --- |
+| ![Автоматический DFU](docs/images/dfu.png) | ![Настройки Target Mac DFU](docs/images/settings.png) |
 
 ## Быстрый старт
 
