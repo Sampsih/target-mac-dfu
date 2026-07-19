@@ -71,6 +71,24 @@
 
 О найденной уязвимости сообщайте по инструкции в [SECURITY.md](SECURITY.md).
 
+## Поддержать проект
+
+Если Target Mac DFU оказался полезен, разработку можно поддержать любым удобным способом.
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_a_Coffee-поддержать-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/sampsih)
+
+### TON (Gram)
+
+Mainnet-адрес:
+
+```text
+UQBDpkQH_ryzYKm5iiBQLuFz32SJllk4WI3drZfjQCYFHKX4
+```
+
+[Открыть перевод в TON-кошельке](ton://transfer/UQBDpkQH_ryzYKm5iiBQLuFz32SJllk4WI3drZfjQCYFHKX4?text=Thanks%20for%20Target%20Mac%20DFU) · [Проверить адрес в TON Viewer](https://tonviewer.com/UQBDpkQH_ryzYKm5iiBQLuFz32SJllk4WI3drZfjQCYFHKX4)
+
+Перед подтверждением перевода обязательно сверьте адрес в кошельке с указанным выше.
+
 ## Лицензия
 
 Исходный код распространяется по лицензии [MIT](LICENSE). Загружаемый при необходимости проект `macvdmtool` имеет собственную лицензию и сопровождается отдельно его авторами.
