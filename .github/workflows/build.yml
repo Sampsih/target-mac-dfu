@@ -1,0 +1,25 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build application
+        run: ./scripts/build.sh
+      - name: Package application
+        run: ./scripts/package.sh
+      - name: Upload unsigned artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Target-Mac-DFU-${{ github.sha }}
+          path: dist/Target-Mac-DFU-*.zip

@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "description": "Target Mac DFU bundled catalog. Add signed, model-specific entries to devices.",
+  "devices": []
+}

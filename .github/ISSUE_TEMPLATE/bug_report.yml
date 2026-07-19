@@ -1,0 +1,39 @@
+name: Ошибка
+description: Сообщить о воспроизводимой проблеме
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Не публикуйте пароли, токены, полный ECID и другие закрытые данные."
+  - type: input
+    id: version
+    attributes:
+      label: Версия Target Mac DFU
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: Версия macOS и модель Host Mac
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги воспроизведения
+      description: Что нажать и что происходит?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемый результат
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Журналы или снимки экрана
+      description: Удалите персональные и закрытые данные перед публикацией.
