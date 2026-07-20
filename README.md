@@ -84,6 +84,7 @@
 Если Target Mac DFU оказался полезен, разработку можно поддержать любым удобным способом.
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_a_Coffee-поддержать-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/sampsih)
+[![CloudTips](https://img.shields.io/badge/CloudTips-поддержать-00AEEF)](https://pay.cloudtips.ru/p/56c624cb)
 
 ### TON (Gram)
 

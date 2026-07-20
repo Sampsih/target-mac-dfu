@@ -82,6 +82,7 @@ Please follow [SECURITY.md](SECURITY.md) to report a vulnerability.
 ## Support the project
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_a_Coffee-support-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/sampsih)
+[![CloudTips](https://img.shields.io/badge/CloudTips-support-00AEEF)](https://pay.cloudtips.ru/p/56c624cb)
 
 TON mainnet address:
 
