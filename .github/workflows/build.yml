@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Run tests
         run: ./scripts/test.sh
       - name: Build application
@@ -21,7 +21,7 @@ jobs:
       - name: Package application
         run: ./scripts/package.sh
       - name: Upload unsigned artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Target-Mac-DFU-${{ github.sha }}
           path: dist/Target-Mac-DFU-*.zip
