@@ -7,10 +7,13 @@ struct GlassCard<Content: View>: View {
 
     var body: some View {
         content
-            .padding(18)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.4)) }
-            .shadow(color: .black.opacity(0.06), radius: 14, y: 7)
+            .padding(20)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(LinearGradient(colors: [.white.opacity(0.55), .blue.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            }
+            .shadow(color: .black.opacity(0.07), radius: 18, y: 8)
     }
 }
 
@@ -205,40 +208,166 @@ struct OverviewView: View {
     var body: some View {
         VStack(spacing: 18) {
             PageHeader(
-                title: L10n.text("Обзор", "Overview", model.language),
-                subtitle: model.detail,
-                action: AnyView(
-                    Button(
-                        model.device == nil
-                            ? L10n.text("Войти в DFU", "Enter DFU", model.language)
-                            : L10n.text("Обновить", "Refresh", model.language),
-                        systemImage: model.device == nil ? "power" : "arrow.clockwise"
-                    ) {
-                        if model.device == nil { model.enterDFU() }
-                        else { Task { await model.refreshDevice(silent: false) } }
-                    }
-                    .controlSize(.large)
-                    .keyboardShortcut("r", modifiers: [.command])
-                    .disabled(model.busy)
-                )
+                title: L10n.text("Восстановление Mac", "Restore a Mac", model.language),
+                subtitle: L10n.text(
+                    "Приложение проведёт вас от подключения кабеля до чистой установки macOS.",
+                    "The app guides you from connecting the cable to a clean macOS installation.",
+                    model.language
+                ),
+                action: AnyView(Button(L10n.text("Обновить", "Refresh", model.language), systemImage: "arrow.clockwise") {
+                    Task { await model.refreshDevice(silent: false) }
+                }.disabled(model.busy))
             )
 
             if model.toolStatus != nil, !model.cfgutilReady, !model.settings.demoMode {
                 ToolSetupCard(model: model, compact: true)
-                    .frame(height: 104)
             }
 
-            HStack(alignment: .top, spacing: 18) {
-                DeviceSummaryCard(model: model)
-                SafetyStepsCard(model: model).frame(width: 390)
+            WorkflowProgressCard(model: model)
+            PrimaryActionCard(model: model)
+            DeviceSummaryCard(model: model)
+                .frame(minHeight: 220)
+
+            if model.device != nil {
+                HStack(alignment: .top, spacing: 18) {
+                    FirmwareList(model: model, compact: true)
+                    QuickRecoveryCard(model: model).frame(width: 390)
+                }
+                .frame(minHeight: 360)
             }
-            .frame(height: 270)
-            HStack(alignment: .top, spacing: 18) {
-                FirmwareList(model: model, compact: true)
-                QuickRecoveryCard(model: model).frame(width: 390)
-            }
-            .frame(height: 360)
         }
+    }
+}
+
+struct WorkflowProgressCard: View {
+    @ObservedObject var model: AppModel
+
+    private var currentStep: Int {
+        if model.isRecoveryRunning || model.sessionPhase == .completed { return 4 }
+        if model.selectedFirmware != nil { return 3 }
+        if model.dfuDetected { return 3 }
+        return 1
+    }
+
+    var body: some View {
+        GlassCard {
+            HStack(spacing: 0) {
+                step(1, L10n.text("Подключение", "Connect", model.language), "cable.connector")
+                connector(after: 1)
+                step(2, "DFU", "dot.radiowaves.left.and.right")
+                connector(after: 2)
+                step(3, "IPSW", "arrow.down.circle")
+                connector(after: 3)
+                step(4, "Restore", "arrow.triangle.2.circlepath")
+            }
+        }
+    }
+
+    private func step(_ number: Int, _ title: String, _ icon: String) -> some View {
+        let completed = number < currentStep || (number == 4 && model.sessionPhase == .completed)
+        let active = number == currentStep && !completed
+        return VStack(spacing: 7) {
+            Image(systemName: completed ? "checkmark" : icon)
+                .font(.headline)
+                .frame(width: 38, height: 38)
+                .foregroundStyle(completed || active ? .white : .secondary)
+                .background(
+                    completed ? AnyShapeStyle(.green.gradient) :
+                        active ? AnyShapeStyle(.blue.gradient) : AnyShapeStyle(.quaternary),
+                    in: Circle()
+                )
+            Text(title).font(.caption.bold()).foregroundStyle(active ? .primary : .secondary)
+        }
+        .frame(minWidth: 105)
+        .accessibilityLabel("\(number). \(title)")
+    }
+
+    private func connector(after number: Int) -> some View {
+        Capsule()
+            .fill(number < currentStep ? Color.green.opacity(0.65) : Color.secondary.opacity(0.18))
+            .frame(maxWidth: .infinity, minHeight: 3, maxHeight: 3)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 25)
+    }
+}
+
+struct PrimaryActionCard: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        GlassCard {
+            HStack(spacing: 22) {
+                Image(systemName: icon)
+                    .font(.system(size: 43, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(accent)
+                    .frame(width: 74, height: 74)
+                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(kicker).font(.caption.bold()).foregroundStyle(accent).textCase(.uppercase)
+                    Text(title).font(.title2.bold())
+                    Text(explanation).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 20)
+                Button(buttonTitle, systemImage: buttonIcon, action: action)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(accent)
+                    .disabled(model.busy || model.downloads.phase.isActive)
+            }
+        }
+    }
+
+    private var kicker: String {
+        if !model.dfuDetected { return L10n.text("Шаг 1 из 4", "Step 1 of 4", model.language) }
+        if model.device == nil { return L10n.text("Нужен компонент Apple", "Apple component required", model.language) }
+        if model.selectedFirmware == nil { return L10n.text("Шаг 3 из 4", "Step 3 of 4", model.language) }
+        return L10n.text("Готово к шагу 4", "Ready for step 4", model.language)
+    }
+    private var title: String {
+        if !model.dfuDetected { return L10n.text("Отправьте подключённый Mac в DFU", "Send the connected Mac to DFU", model.language) }
+        if model.device == nil { return L10n.text("Установите Automation Tools", "Install Automation Tools", model.language) }
+        if model.selectedFirmware == nil { return L10n.text("Выберите подходящую IPSW", "Choose a compatible IPSW", model.language) }
+        return L10n.text("Проверьте выбор и запустите Restore", "Review and start Restore", model.language)
+    }
+    private var explanation: String {
+        if !model.dfuDetected {
+            return L10n.text("Подключите Mac напрямую правильным USB-C портом. Приложение само отправит команду и проверит результат.", "Connect the Mac directly through the correct USB-C port. The app sends the command and verifies the result.", model.language)
+        }
+        if model.device == nil {
+            return L10n.text("DFU уже подтверждён. Automation Tools нужны, чтобы прочитать модель и безопасно запустить Restore.", "DFU is already confirmed. Automation Tools are required to read the model and safely start Restore.", model.language)
+        }
+        if model.selectedFirmware == nil {
+            return L10n.text("Каталог отфильтрован по точной модели подключённого Mac.", "The catalog is filtered for the exact connected Mac model.", model.language)
+        }
+        return L10n.text("Restore полностью сотрёт данные на подключённом Mac.", "Restore completely erases the connected Mac.", model.language)
+    }
+    private var buttonTitle: String {
+        if !model.dfuDetected { return L10n.text("Отправить Mac в DFU", "Send Mac to DFU", model.language) }
+        if model.device == nil { return L10n.text("Открыть настройки", "Open Settings", model.language) }
+        if model.selectedFirmware == nil { return L10n.text("Открыть IPSW", "Open IPSW Library", model.language) }
+        return L10n.text("Перейти к Restore", "Continue to Restore", model.language)
+    }
+    private var buttonIcon: String {
+        if !model.dfuDetected { return "power" }
+        if model.device == nil { return "gearshape.fill" }
+        if model.selectedFirmware == nil { return "books.vertical.fill" }
+        return "arrow.right.circle.fill"
+    }
+    private var icon: String {
+        if !model.dfuDetected { return "laptopcomputer.and.arrow.down" }
+        if model.device == nil { return "wrench.and.screwdriver.fill" }
+        if model.selectedFirmware == nil { return "externaldrive.badge.questionmark" }
+        return "checkmark.shield.fill"
+    }
+    private var accent: Color {
+        model.selectedFirmware == nil ? .blue : .green
+    }
+    private func action() {
+        if !model.dfuDetected { model.enterDFU() }
+        else if model.device == nil { model.selection = .settings }
+        else if model.selectedFirmware == nil { model.selection = .library }
+        else { model.selection = .restore; model.runPreflightNow() }
     }
 }
 
@@ -291,7 +420,7 @@ struct SafetyStepsCard: View {
                 )
                 .font(.headline).foregroundStyle(model.device == nil ? Color.secondary : Color.green)
                 step(1, L10n.text("Проверьте DFU-порт", "Check the DFU port", model.language), L10n.text("Откройте официальную таблицу Apple.", "Open Apple's official port table.", model.language))
-                step(2, L10n.text("Нажмите «Войти в DFU»", "Choose Enter DFU", model.language), L10n.text("Приложение отправит аппаратную команду.", "The app sends the hardware command.", model.language))
+                step(2, L10n.text("Нажмите «Отправить Mac в DFU»", "Choose Send Mac to DFU", model.language), L10n.text("Приложение отправит аппаратную команду.", "The app sends the hardware command.", model.language))
                 step(3, L10n.text("Проверьте DFU", "Verify DFU", model.language), L10n.text("Дождитесь модели и последних цифр ECID.", "Wait for the model and final ECID digits.", model.language))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -420,11 +549,11 @@ struct DFUGuideView: View {
             )
             GlassCard {
                 HStack(spacing: 24) {
-                    Image(systemName: model.device == nil ? "bolt.horizontal.circle.fill" : "checkmark.circle.fill")
+                    Image(systemName: model.dfuDetected ? "checkmark.circle.fill" : "bolt.horizontal.circle.fill")
                         .font(.system(size: 70))
-                        .foregroundStyle(model.device == nil ? .blue : .green)
+                        .foregroundStyle(model.dfuDetected ? .green : .blue)
                     VStack(alignment: .leading, spacing: 12) {
-                        Text(model.device == nil
+                        Text(!model.dfuDetected
                             ? L10n.text("Автоматически отправить Mac в DFU", "Send Mac to DFU Automatically", model.language)
                             : L10n.text("Mac уже находится в DFU", "Mac Is Already in DFU", model.language))
                             .font(.title2.bold())
@@ -436,7 +565,7 @@ struct DFUGuideView: View {
                         HStack {
                             Button(L10n.text("Отправить Mac в DFU", "Send Mac to DFU", model.language), systemImage: "power") { model.enterDFU() }
                                 .buttonStyle(.borderedProminent).controlSize(.large)
-                                .disabled(model.busy || model.device != nil)
+                                .disabled(model.busy || model.dfuDetected)
                             Button(L10n.text("Таблица DFU-портов Apple", "Apple DFU Port Table", model.language), systemImage: "safari") { model.openAppleDFUPortGuide() }
                             Button(L10n.text("Открыть Finder", "Open Finder", model.language), systemImage: "face.smiling") { model.openFinder() }
                         }
@@ -553,6 +682,18 @@ struct DownloadsView: View {
                     HStack {
                         Text(manager.progressText).monospacedDigit().font(.headline)
                         Spacer()
+                        if let seconds = manager.estimatedSecondsRemaining, manager.phase == .downloading {
+                            Label(
+                                L10n.text(
+                                    "Осталось примерно \(Self.duration(seconds))",
+                                    "About \(Self.duration(seconds)) remaining",
+                                    model.language
+                                ),
+                                systemImage: "clock"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
                         phaseText
                     }
                     HStack {
@@ -592,6 +733,14 @@ struct DownloadsView: View {
         case .failed(let error): Text(error).foregroundStyle(.red).lineLimit(2)
         }
     }
+
+    private static func duration(_ seconds: Double) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = seconds >= 3600 ? [.hour, .minute] : [.minute, .second]
+        formatter.unitsStyle = .abbreviated
+        formatter.maximumUnitCount = 2
+        return formatter.string(from: max(0, seconds)) ?? "—"
+    }
 }
 
 struct RecoveryView: View {
@@ -614,10 +763,32 @@ struct RecoveryView: View {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 14) {
                         Text(L10n.text("Предварительная проверка", "Preflight", model.language)).font(.title2.bold())
-                        check(model.device != nil, L10n.text("Устройство и ECID определены", "Device and ECID detected", model.language))
-                        check(model.selectedFirmware != nil, L10n.text("Совместимая IPSW выбрана", "Compatible IPSW selected", model.language))
-                        check(model.selectedFirmware.map(model.isDownloaded) ?? false, L10n.text("IPSW загружена (иначе загрузится автоматически)", "IPSW downloaded (otherwise downloads automatically)", model.language))
-                        check(!model.downloads.phase.isActive, L10n.text("Нет другой активной загрузки", "No other active download", model.language))
+                        if model.preflightRunning {
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text(L10n.text("Проверяем готовность…", "Checking readiness…", model.language))
+                            }
+                        } else if model.preflightChecks.isEmpty {
+                            check(model.device != nil, L10n.text("Устройство и ECID определены", "Device and ECID detected", model.language))
+                            check(model.selectedFirmware != nil, L10n.text("Совместимая IPSW выбрана", "Compatible IPSW selected", model.language))
+                            check(!model.downloads.phase.isActive, L10n.text("Нет другой активной загрузки", "No other active download", model.language))
+                        } else {
+                            ForEach(model.preflightChecks) { item in
+                                HStack(alignment: .top, spacing: 9) {
+                                    Image(systemName: item.state.icon)
+                                        .foregroundStyle(color(for: item.state))
+                                        .frame(width: 18)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.title).font(.headline)
+                                        Text(item.detail).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                        Button(L10n.text("Проверить готовность", "Run Readiness Check", model.language), systemImage: "checkmark.shield") {
+                            model.runPreflightNow()
+                        }
+                        .disabled(model.device == nil || model.selectedFirmware == nil || model.preflightRunning)
                         Divider()
                         Text(L10n.text("Во время активного RecoveryJob кнопка отмены намеренно отсутствует: cfgutil должен завершить безопасную точку сам.", "During an active RecoveryJob there is intentionally no cancel button; cfgutil must reach its own safe point.", model.language)).font(.caption).foregroundStyle(.secondary)
                     }
@@ -629,7 +800,7 @@ struct RecoveryView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Label(model.status, systemImage: "wrench.and.screwdriver.fill").font(.title2.bold())
                         ProgressView(value: model.recoveryProgress)
-                        Text("\(Int(model.recoveryProgress * 100))% · \(model.detail)").monospacedDigit()
+                        Text("\(Int(model.recoveryProgress * 100))% · \(model.recoveryStage.isEmpty ? model.detail : model.recoveryStage)").monospacedDigit()
                     }
                 }
             }
@@ -638,6 +809,15 @@ struct RecoveryView: View {
 
     private func check(_ passed: Bool, _ text: String) -> some View {
         Label(text, systemImage: passed ? "checkmark.circle.fill" : "circle").foregroundStyle(passed ? .green : .secondary)
+    }
+
+    private func color(for state: CheckState) -> Color {
+        switch state {
+        case .passed: return .green
+        case .warning: return .orange
+        case .failed: return .red
+        case .pending: return .secondary
+        }
     }
 }
 
@@ -686,6 +866,13 @@ struct HistoryView: View {
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var updateChecker: UpdateChecker
+
+    init(model: AppModel) {
+        self.model = model
+        self._updateChecker = ObservedObject(wrappedValue: model.updateChecker)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             PageHeader(title: L10n.text("Настройки", "Settings", settings.language), subtitle: L10n.text("Хранилище, язык, диагностика и тестовый адаптер.", "Storage, language, diagnostics, and test adapter.", settings.language), action: nil)
@@ -777,9 +964,10 @@ struct SettingsView: View {
                 }
                 GlassCard {
                     VStack(alignment: .leading, spacing: 14) {
-                        Label(L10n.text("Конфиденциальность и тесты", "Privacy & Testing", settings.language), systemImage: "hand.raised.fill").font(.title2.bold())
-                        Toggle(L10n.text("Анонимная телеметрия (только с согласием)", "Anonymous telemetry (opt-in only)", settings.language), isOn: $settings.telemetryOptIn)
-                        Text(L10n.text("В этой сборке endpoint телеметрии не настроен: данные никуда не отправляются.", "No telemetry endpoint is configured in this build; nothing is transmitted.", settings.language)).font(.caption).foregroundStyle(.secondary)
+                        Label(L10n.text("Приватность и тесты", "Privacy & Testing", settings.language), systemImage: "hand.raised.fill").font(.title2.bold())
+                        Label(L10n.text("Телеметрии и фоновой отправки данных нет", "No telemetry or background data uploads", settings.language), systemImage: "checkmark.shield.fill")
+                            .foregroundStyle(.green)
+                        Text(L10n.text("История операций и настройки хранятся только на этом Mac. Support bundle создаётся лишь по вашей команде.", "Operation history and settings stay on this Mac. A support bundle is created only when you request it.", settings.language)).font(.caption).foregroundStyle(.secondary)
                         Toggle(L10n.text("Демо-режим без реального Mac", "Demo mode without a real Mac", settings.language), isOn: $settings.demoMode)
                         Text(L10n.text("Fake-адаптер позволяет пройти UI-сценарий и проверить ошибки без подключённого устройства.", "The fake adapter exercises the UI flow and errors without attached hardware.", settings.language)).font(.caption).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity, alignment: .leading)
@@ -788,15 +976,46 @@ struct SettingsView: View {
             GlassCard {
                 HStack {
                     VStack(alignment: .leading) {
-                        Text("Target Mac DFU \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")").font(.headline)
-                        Text(L10n.text("Автообновление отключено: в исходном пакете не указан доверенный release feed.", "Auto-update is disabled: the source package does not define a trusted release feed.", settings.language)).font(.caption).foregroundStyle(.secondary)
+                        Text("Target Mac DFU \(model.currentVersion)").font(.headline)
+                        updateStatus
+                        Toggle(L10n.text("Автоматически проверять новые версии", "Automatically check for updates", settings.language), isOn: $settings.automaticUpdateChecks)
                     }
                     Spacer()
+                    if case .available = updateChecker.state {
+                        Button(L10n.text("Открыть релиз", "Open Release", settings.language), systemImage: "arrow.up.forward.app") {
+                            model.openAvailableUpdate()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Button(L10n.text("Проверить обновления", "Check for Updates", settings.language), systemImage: "arrow.clockwise") {
+                            model.checkForUpdates()
+                        }
+                        .disabled(updateChecker.state == .checking)
+                    }
                     Button(L10n.text("Открыть журнал", "Open Log", settings.language), systemImage: "doc.text.magnifyingglass") {
                         NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/TargetMacDFU.log"))
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder private var updateStatus: some View {
+        switch updateChecker.state {
+        case .idle:
+            Text(L10n.text("Проверка обновлений ещё не выполнялась.", "Updates have not been checked yet.", settings.language))
+                .font(.caption).foregroundStyle(.secondary)
+        case .checking:
+            Label(L10n.text("Проверяем GitHub Releases…", "Checking GitHub Releases…", settings.language), systemImage: "arrow.triangle.2.circlepath")
+                .font(.caption).foregroundStyle(.secondary)
+        case .current:
+            Label(L10n.text("Установлена актуальная версия.", "You have the latest version.", settings.language), systemImage: "checkmark.circle.fill")
+                .font(.caption).foregroundStyle(.green)
+        case .available(let version, _):
+            Label(L10n.text("Доступна версия \(version).", "Version \(version) is available.", settings.language), systemImage: "arrow.down.circle.fill")
+                .font(.caption).foregroundStyle(.blue)
+        case .failed(let message):
+            Text(message).font(.caption).foregroundStyle(.orange).lineLimit(2)
         }
     }
 }

@@ -73,6 +73,7 @@ struct Firmware: Codable, Identifiable, Hashable {
     let size: Int64
     let url: String
     let sha1: String
+    let sha256: String?
     let filename: String
     let beta: Bool?
 
@@ -115,14 +116,65 @@ struct ToolStatus: Codable, Equatable {
     let configuratorPath: String
     let cfgutilInstalled: Bool
     let cfgutilPath: String
+    let macvdmtoolInstalled: Bool?
+    let macvdmtoolPath: String?
+    let macvdmtoolRevision: String?
+    let commandLineToolsInstalled: Bool?
+    let hostArchitecture: String?
+}
+
+struct DFUPresence: Codable, Equatable {
+    let detected: Bool
+    let via: String
+}
+
+enum CheckState: String, Codable {
+    case passed
+    case warning
+    case failed
+    case pending
+
+    var icon: String {
+        switch self {
+        case .passed: return "checkmark.circle.fill"
+        case .warning: return "exclamationmark.triangle.fill"
+        case .failed: return "xmark.octagon.fill"
+        case .pending: return "clock.fill"
+        }
+    }
+}
+
+struct PreflightCheck: Identifiable, Codable, Equatable {
+    let id: String
+    let state: CheckState
+    let title: String
+    let detail: String
+
+    var blocksRestore: Bool { state == .failed || state == .pending }
+}
+
+struct IPSWValidationReport: Equatable {
+    let fileSize: Int64
+    let productTypes: [String]
+    let hashKind: String?
+    let hashValue: String?
+    let warnings: [String]
+}
+
+enum UpdateState: Equatable {
+    case idle
+    case checking
+    case current
+    case available(version: String, url: URL)
+    case failed(String)
 }
 
 enum RecoveryKind: String, Codable, CaseIterable, Identifiable {
     case revive
     case restore
 
-    // Revive remains decodable so that history from older versions can be read,
-    // but the 4.3 user workflow intentionally exposes Restore only.
+    // Revive remains decodable so that history from older builds can be read,
+    // but the public user workflow intentionally exposes Restore only.
     static var allCases: [RecoveryKind] { [.restore] }
 
     var id: String { rawValue }

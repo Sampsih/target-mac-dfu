@@ -20,6 +20,7 @@ A macOS utility that puts a connected Mac into DFU mode with one click, finds an
 - DFU detection with Model Identifier and ECID verification;
 - signed IPSW discovery plus a separate beta firmware source;
 - download progress, speed, pause and resume;
+- remaining-time estimate and deep IPSW validation before Restore;
 - configurable IPSW storage folder;
 - full Restore with two-step confirmation;
 - operation history, logs and a diagnostic support bundle;
@@ -34,7 +35,7 @@ A macOS utility that puts a connected Mac into DFU mode with one click, finds an
 
 ## Quick start
 
-1. Download `Target-Mac-DFU-1.0.0.zip` from **Releases**.
+1. Download `Target-Mac-DFU-1.1.0.zip` from **Releases**.
 2. Move `Target Mac DFU.app` to **Applications**.
 3. Install Apple Configurator and Automation Tools if prompted.
 4. Connect the host Mac directly to the correct DFU port on the target Mac with a data-capable USB-C cable.
@@ -73,7 +74,7 @@ The app supports IPSW.me, a custom JSON endpoint, a local catalog, and the IPSWB
 
 - this is an independent project and is not affiliated with Apple Inc.;
 - the administrator password is handled by the macOS system dialog and is never stored;
-- telemetry is disabled by default and no data collection endpoint is configured;
+- there is no telemetry or background upload of user data;
 - automatic DFU depends on the model, cable, port, and state of both Macs;
 - Apple, macOS, Mac, and Apple Configurator are trademarks of Apple Inc.
 

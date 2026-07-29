@@ -10,9 +10,9 @@ final class AppSettings: ObservableObject {
         static let downloadDirectory = "downloadDirectory"
         static let language = "language"
         static let cacheLimitGB = "cacheLimitGB"
-        static let telemetry = "telemetryOptIn"
         static let demoMode = "demoMode"
         static let automaticCatalogRefresh = "automaticCatalogRefresh"
+        static let automaticUpdateChecks = "automaticUpdateChecks"
         static let firmwareSource = "firmwareSource"
         static let customFirmwareURL = "customFirmwareURL"
         static let localCatalogPath = "localCatalogPath"
@@ -30,14 +30,14 @@ final class AppSettings: ObservableObject {
     @Published var cacheLimitGB: Double {
         didSet { defaults.set(cacheLimitGB, forKey: Key.cacheLimitGB) }
     }
-    @Published var telemetryOptIn: Bool {
-        didSet { defaults.set(telemetryOptIn, forKey: Key.telemetry) }
-    }
     @Published var demoMode: Bool {
         didSet { defaults.set(demoMode, forKey: Key.demoMode) }
     }
     @Published var automaticCatalogRefresh: Bool {
         didSet { defaults.set(automaticCatalogRefresh, forKey: Key.automaticCatalogRefresh) }
+    }
+    @Published var automaticUpdateChecks: Bool {
+        didSet { defaults.set(automaticUpdateChecks, forKey: Key.automaticUpdateChecks) }
     }
     @Published var firmwareSource: FirmwareSourceKind {
         didSet { defaults.set(firmwareSource.rawValue, forKey: Key.firmwareSource) }
@@ -59,10 +59,11 @@ final class AppSettings: ObservableObject {
         language = AppLanguage(rawValue: defaults.string(forKey: Key.language) ?? "ru") ?? .russian
         cacheLimitGB = defaults.object(forKey: Key.cacheLimitGB) == nil
             ? 80 : max(10, defaults.double(forKey: Key.cacheLimitGB))
-        telemetryOptIn = defaults.bool(forKey: Key.telemetry)
         demoMode = defaults.bool(forKey: Key.demoMode)
         automaticCatalogRefresh = defaults.object(forKey: Key.automaticCatalogRefresh) == nil
             ? true : defaults.bool(forKey: Key.automaticCatalogRefresh)
+        automaticUpdateChecks = defaults.object(forKey: Key.automaticUpdateChecks) == nil
+            ? true : defaults.bool(forKey: Key.automaticUpdateChecks)
         firmwareSource = FirmwareSourceKind(
             rawValue: defaults.string(forKey: Key.firmwareSource) ?? FirmwareSourceKind.ipswMe.rawValue
         ) ?? .ipswMe

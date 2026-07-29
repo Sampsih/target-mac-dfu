@@ -5,6 +5,8 @@ setopt PIPE_FAIL
 APP_SUPPORT="$HOME/Library/Application Support/Target Mac DFU"
 TOOL="$APP_SUPPORT/macvdmtool"
 SRC="$APP_SUPPORT/macvdmtool-src"
+TOOL_REVISION_FILE="$APP_SUPPORT/macvdmtool.revision"
+MACVDMTOOL_REVISION="b22ae51eb43a0e1daa21d41616ac899f28e7bf8a"
 DEFAULT_DOWNLOADS="$HOME/Downloads/Target Mac DFU"
 CATALOG="$APP_SUPPORT/catalog"
 LOG="$HOME/Library/Logs/TargetMacDFU.log"
@@ -12,6 +14,7 @@ mkdir -p "$APP_SUPPORT" "$DEFAULT_DOWNLOADS" "$CATALOG" "${LOG:h}"
 
 log(){ print -r -- "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] $*" >>"$LOG"; }
 fail(){ log "ERROR: $*"; print -u2 -r -- "$*"; }
+stage(){ log "STAGE: $*"; print -r -- "STAGE|$*"; }
 json_escape(){ /usr/bin/sed 's/\\/\\\\/g;s/"/\\"/g;s/	/\\t/g;s/\r//g;s/$/\\n/' | /usr/bin/tr -d '\n' | /usr/bin/sed 's/\\n$//'; }
 
 find_cfg(){
@@ -33,31 +36,47 @@ find_configurator(){
 }
 
 capabilities(){
-  local cfg='' configurator='' cfg_ok=false configurator_ok=false
+  local cfg='' configurator='' cfg_ok=false configurator_ok=false tool_ok=false tool_revision='' clt_ok=false architecture
   cfg=$(find_cfg 2>/dev/null || true)
   configurator=$(find_configurator 2>/dev/null || true)
   [[ -n "$cfg" ]] && cfg_ok=true
   [[ -n "$configurator" ]] && configurator_ok=true
+  [[ -x "$TOOL" ]] && tool_ok=true
+  [[ -f "$TOOL_REVISION_FILE" ]] && tool_revision=$(/bin/cat "$TOOL_REVISION_FILE" 2>/dev/null || true)
+  /usr/bin/xcode-select -p >/dev/null 2>&1 && clt_ok=true
+  architecture=$(/usr/bin/uname -m)
   cfg=$(print -r -- "$cfg" | json_escape)
   configurator=$(print -r -- "$configurator" | json_escape)
-  print -r -- "{\"configuratorInstalled\":$configurator_ok,\"configuratorPath\":\"$configurator\",\"cfgutilInstalled\":$cfg_ok,\"cfgutilPath\":\"$cfg\"}"
+  tool_revision=$(print -r -- "$tool_revision" | json_escape)
+  architecture=$(print -r -- "$architecture" | json_escape)
+  print -r -- "{\"configuratorInstalled\":$configurator_ok,\"configuratorPath\":\"$configurator\",\"cfgutilInstalled\":$cfg_ok,\"cfgutilPath\":\"$cfg\",\"macvdmtoolInstalled\":$tool_ok,\"macvdmtoolPath\":\"$TOOL\",\"macvdmtoolRevision\":\"$tool_revision\",\"commandLineToolsInstalled\":$clt_ok,\"hostArchitecture\":\"$architecture\"}"
 }
 
 ensure_tool(){
-  [[ -x "$TOOL" ]] && return 0
-  if [[ -x /usr/local/bin/macvdmtool ]]; then
-    print -r -- 'Найден установленный macvdmtool.'
-    /bin/cp /usr/local/bin/macvdmtool "$TOOL" && /bin/chmod 755 "$TOOL"
-    return $?
-  fi
+  local installed_revision=''
+  [[ -f "$TOOL_REVISION_FILE" ]] && installed_revision=$(/bin/cat "$TOOL_REVISION_FILE" 2>/dev/null || true)
+  [[ -x "$TOOL" && "$installed_revision" == "$MACVDMTOOL_REVISION" ]] && return 0
   [[ "$(/usr/bin/uname -m)" == arm64 ]] || { fail 'Автоматический вход в DFU через macvdmtool требует Host Mac с Apple silicon.'; return 2; }
-  /usr/bin/xcode-select -p >/dev/null 2>&1 || { fail 'Требуются Apple Command Line Tools.'; return 2; }
+  if ! /usr/bin/xcode-select -p >/dev/null 2>&1; then
+    /usr/bin/xcode-select --install >/dev/null 2>&1 || true
+    fail 'Начата установка Apple Command Line Tools. Завершите её и нажмите кнопку DFU ещё раз.'
+    return 2
+  fi
   [[ "$SRC" == "$APP_SUPPORT/macvdmtool-src" ]] || { fail 'Некорректный путь исходников macvdmtool.'; return 2; }
-  print -r -- 'macvdmtool не найден — выполняется однократная сборка.'
+  stage 'Подготовка проверенного модуля автоматического DFU'
   /bin/rm -rf "$SRC"
-  /usr/bin/git clone --depth 1 https://github.com/AsahiLinux/macvdmtool.git "$SRC" >>"$LOG" 2>&1 || return 3
+  /bin/mkdir -p "$SRC" || return 3
+  /usr/bin/git -C "$SRC" init -q >>"$LOG" 2>&1 || return 3
+  /usr/bin/git -C "$SRC" remote add origin https://github.com/AsahiLinux/macvdmtool.git >>"$LOG" 2>&1 || return 3
+  /usr/bin/git -C "$SRC" fetch --depth 1 origin "$MACVDMTOOL_REVISION" >>"$LOG" 2>&1 || return 3
+  /usr/bin/git -C "$SRC" checkout --detach FETCH_HEAD >>"$LOG" 2>&1 || return 3
+  [[ "$(/usr/bin/git -C "$SRC" rev-parse HEAD 2>/dev/null)" == "$MACVDMTOOL_REVISION" ]] || {
+    fail 'Проверка ревизии macvdmtool не пройдена.'
+    return 3
+  }
   /usr/bin/make -C "$SRC" >>"$LOG" 2>&1 || return 4
-  /bin/cp "$SRC/macvdmtool" "$TOOL" && /bin/chmod 755 "$TOOL"
+  /bin/cp "$SRC/macvdmtool" "$TOOL" && /bin/chmod 755 "$TOOL" || return 4
+  print -r -- "$MACVDMTOOL_REVISION" >"$TOOL_REVISION_FILE"
 }
 
 priv_status(){
@@ -123,6 +142,11 @@ dfu_presence(){
       return 0
     fi
   fi
+  usb=$(/usr/sbin/ioreg -p IOUSB -l -w 0 2>/dev/null || true)
+  if print -r -- "$usb" | /usr/bin/grep -Eiq 'Mac DFU Mode|Apple Mobile Device.*DFU|DFU Mode|AppleDFU'; then
+    print -r -- '{"detected":true,"via":"usb"}'
+    return 0
+  fi
   usb=$(/usr/sbin/system_profiler SPUSBDataType 2>/dev/null || true)
   if print -r -- "$usb" | /usr/bin/grep -Eiq 'Mac DFU Mode|Apple Mobile Device.*DFU|DFU Mode'; then
     print -r -- '{"detected":true,"via":"usb"}'
@@ -156,9 +180,14 @@ detect(){
 }
 
 wait_for_dfu(){
-  local timeout=${1:-60} elapsed=0 result
+  local timeout=${1:-60} elapsed=0 result presence
   while (( elapsed < timeout )); do
     if result=$(detect 2>/dev/null); then print -r -- "$result"; return 0; fi
+    presence=$(dfu_presence 2>/dev/null || true)
+    if print -r -- "$presence" | /usr/bin/grep -q '"detected":true'; then
+      print -r -- "$presence"
+      return 0
+    fi
     /bin/sleep 2
     (( elapsed += 2 ))
   done
@@ -167,18 +196,38 @@ wait_for_dfu(){
 }
 
 enter_dfu(){
-  if [[ "${TARGET_MAC_DFU_FAKE:-0}" == 1 ]]; then /bin/sleep 1; return 0; fi
+  if [[ "${TARGET_MAC_DFU_FAKE:-0}" == 1 ]]; then
+    stage 'Проверка подключения'
+    /bin/sleep 0.2
+    stage 'Отправка аппаратной команды DFU'
+    /bin/sleep 0.4
+    stage 'DFU подтверждён'
+    return 0
+  fi
   [[ "$(/usr/bin/uname -m)" == arm64 ]] || { fail 'Кнопка автоматического DFU работает только на Host Mac с Apple silicon.'; return 2; }
+  stage 'Проверка Host Mac и компонентов'
   ensure_tool || return $?
-  local output rc
-  print -r -- 'Отправляю аппаратную команду DFU…'
+  local output rc presence
+  presence=$(dfu_presence 2>/dev/null || true)
+  if print -r -- "$presence" | /usr/bin/grep -q '"detected":true'; then
+    stage 'Mac уже находится в DFU'
+    return 0
+  fi
+  stage 'Отправка аппаратной команды DFU'
   output=$(priv_status dfu 2>&1) || { fail "$output"; return 9; }
   log "macvdmtool dfu output:\n$output"
   rc=$(print -r -- "$output" | /usr/bin/sed -n 's/.*__TARGET_MAC_DFU_RC__\([0-9][0-9]*\).*/\1/p' | /usr/bin/tail -1)
   [[ -n "$rc" ]] || rc=1
   (( rc != 0 && rc != 255 )) && log "macvdmtool returned $rc; verifying actual DFU state"
-  wait_for_dfu 60 >/dev/null
-  print -r -- 'DFU обнаружен.'
+  stage 'Ожидание ответа Target Mac'
+  if ! wait_for_dfu 25 >/dev/null 2>&1; then
+    stage 'Повторная отправка команды DFU'
+    output=$(priv_status dfu 2>&1) || { fail "$output"; return 9; }
+    log "macvdmtool retry output:\n$output"
+    stage 'Повторная проверка DFU'
+    wait_for_dfu 60 >/dev/null || return $?
+  fi
+  stage 'DFU подтверждён'
 }
 
 normalize_catalog(){
@@ -213,7 +262,7 @@ function run(a){
       version:version, build:build,
       date:str(x.releasedate || x.releaseDate || x.uploadDate || x.date).slice(0,10),
       size:Number(x.filesize || x.fileSize || x.size || 0), url:url,
-      sha1:str(x.sha1sum || x.sha1 || x.hash), filename:filename,
+      sha1:str(x.sha1sum || x.sha1 || x.hash), sha256:str(x.sha256sum || x.sha256), filename:filename,
       signed:(x.signed === true || x.signed === 1 || x.signed === 'true'),
       beta:(explicitBeta || inferredBeta)
     };
@@ -246,7 +295,7 @@ function run(a){
     if (match && months[match[1]]) date=match[3]+'-'+months[match[1]]+'-'+String(match[2]).padStart(2,'0'); else date=date.slice(0,10);
     const filename=(url.split('/').pop() || '').split('?')[0];
     const officialAppleCDN=/^https:\/\/(updates\.cdn-apple\.com|secure-appldnld\.apple\.com)\//i.test(url);
-    return {version:version, build:build, date:date, size:0, url:url, sha1:'', filename:filename, beta:true, officialAppleCDN:officialAppleCDN};
+    return {version:version, build:build, date:date, size:0, url:url, sha1:'', sha256:'', filename:filename, beta:true, officialAppleCDN:officialAppleCDN};
   }).filter(x=>x.officialAppleCDN && x.version && x.build && x.filename)
     .map(x=>{ delete x.officialAppleCDN; return x; })
     .sort((x,y)=>String(y.date).localeCompare(String(x.date)) || String(y.build).localeCompare(String(x.build)));
@@ -278,7 +327,7 @@ firmwares(){
     ipswBeta)
       local beta_index beta_major
       beta_index=$(/usr/bin/curl -fsSL --proto '=https' --tlsv1.2 --retry 2 --connect-timeout 15 --max-time 30 \
-        -A 'Target-Mac-DFU/4.2' 'https://ipswbeta.dev/macos/' 2>/dev/null || true)
+        -A 'Target-Mac-DFU/1.1' 'https://ipswbeta.dev/macos/' 2>/dev/null || true)
       beta_major=$(print -r -- "$beta_index" | /usr/bin/sed -n 's#.*href="/macos/\([0-9][0-9]*\)\.x/".*#\1#p' | /usr/bin/sort -nr | /usr/bin/head -1)
       [[ -n "$beta_major" ]] || beta_major=27
       catalog_url="https://ipswbeta.dev/api/device.php?platform=macos&version=${beta_major}&id=${safe_type}"
@@ -341,7 +390,14 @@ recover(){
   [[ -f "$ipsw" ]] || { fail "IPSW-файл не найден: $ipsw"; return 14; }
   if [[ "${TARGET_MAC_DFU_FAKE:-0}" == 1 ]]; then
     local percent
-    for percent in 5 12 20 35 48 61 74 86 95 100; do print -r -- "${operation}: ${percent}%"; /bin/sleep 0.12; done
+    print -r -- 'STAGE|Подготовка устройства'
+    for percent in 5 12 20; do print -r -- "${operation}: ${percent}%"; /bin/sleep 0.12; done
+    print -r -- 'STAGE|Отправка recoveryOS'
+    for percent in 35 48 61; do print -r -- "${operation}: ${percent}%"; /bin/sleep 0.12; done
+    print -r -- 'STAGE|Установка macOS'
+    for percent in 74 86 95; do print -r -- "${operation}: ${percent}%"; /bin/sleep 0.12; done
+    print -r -- 'STAGE|Завершение'
+    print -r -- "${operation}: 100%"
     return 0
   fi
   cfg=$(find_cfg) || { fail 'cfgutil не найден.'; return 5; }
@@ -353,6 +409,7 @@ recover(){
     return 18
   fi
   log "Starting cfgutil $operation for masked ECID ****${ecid[-6,-1]}"
+  print -r -- 'STAGE|Подготовка устройства'
   "$cfg" -e "$ecid" --progress "$operation" -I "$ipsw"
 }
 

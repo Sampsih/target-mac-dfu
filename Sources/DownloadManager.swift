@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 @MainActor
 final class DownloadManager: NSObject, ObservableObject {
@@ -10,6 +9,7 @@ final class DownloadManager: NSObject, ObservableObject {
     @Published private(set) var bytesWritten: Int64 = 0
     @Published private(set) var totalBytes: Int64 = 0
     @Published private(set) var speedBytesPerSecond: Double = 0
+    @Published private(set) var estimatedSecondsRemaining: TimeInterval?
     @Published private(set) var activeFirmware: Firmware?
     @Published private(set) var completedURL: URL?
 
@@ -35,7 +35,12 @@ final class DownloadManager: NSObject, ObservableObject {
         let queue = OperationQueue()
         queue.name = "TargetMacDFU.DownloadDelegate"
         queue.maxConcurrentOperationCount = 1
-        session = URLSession(configuration: .default, delegate: self, delegateQueue: queue)
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForResource = 24 * 60 * 60
+        configuration.allowsConstrainedNetworkAccess = true
+        session = URLSession(configuration: configuration, delegate: self, delegateQueue: queue)
         restorePausedDownload()
     }
 
@@ -49,27 +54,31 @@ final class DownloadManager: NSObject, ObservableObject {
         bytesWritten = 0
         totalBytes = firmware.size
         speedBytesPerSecond = 0
+        estimatedSecondsRemaining = nil
         context.configure(firmware: firmware, destination: destination)
         persistMetadata(firmware: firmware, directory: directory)
+        demoModeActive = demo
 
         if FileManager.default.fileExists(atPath: destination.path) {
-            completedURL = destination
-            progress = 1
-            phase = .completed
-            clearResumeFiles()
-            onCompletion?(.success(destination))
+            if demo {
+                complete(destination)
+            } else {
+                validateAndComplete(destination, firmware: firmware)
+            }
             return
         }
 
         if demo {
-            demoModeActive = true
             startDemoDownload(destination: destination, size: max(1, firmware.size))
             return
         }
         demoModeActive = false
 
-        guard let url = URL(string: firmware.url), ["https", "http"].contains(url.scheme?.lowercased() ?? "") else {
-            fail(AppError.message("Некорректный URL IPSW."))
+        let url: URL
+        do {
+            url = try IPSWValidator.validateDownloadURL(firmware.url)
+        } catch {
+            fail(error)
             return
         }
         phase = .downloading
@@ -105,9 +114,13 @@ final class DownloadManager: NSObject, ObservableObject {
             startDemoDownload(destination: destination, size: max(1, firmware.size))
             return
         }
-        guard
-              let data = try? Data(contentsOf: resumeDataURL),
-              activeFirmware != nil else { return }
+        guard let firmware = activeFirmware else { return }
+        guard let data = try? Data(contentsOf: resumeDataURL) else {
+            if let destination = context.destination() {
+                start(firmware: firmware, directory: destination.deletingLastPathComponent(), demo: demoModeActive)
+            }
+            return
+        }
         phase = .downloading
         lastSampleDate = Date()
         lastSampleBytes = bytesWritten
@@ -128,6 +141,7 @@ final class DownloadManager: NSObject, ObservableObject {
             progress = 0
             bytesWritten = 0
             speedBytesPerSecond = 0
+            estimatedSecondsRemaining = nil
             activeFirmware = nil
         }
     }
@@ -210,6 +224,7 @@ final class DownloadManager: NSObject, ObservableObject {
         progress = 1
         bytesWritten = totalBytes > 0 ? totalBytes : bytesWritten
         speedBytesPerSecond = 0
+        estimatedSecondsRemaining = nil
         phase = .completed
         clearResumeFiles()
         CacheInspector.prune(
@@ -223,7 +238,28 @@ final class DownloadManager: NSObject, ObservableObject {
     private func fail(_ error: Error) {
         phase = .failed(error.localizedDescription)
         speedBytesPerSecond = 0
+        estimatedSecondsRemaining = nil
         onCompletion?(.failure(error))
+    }
+
+    private func validateAndComplete(_ url: URL, firmware: Firmware) {
+        phase = .validating
+        speedBytesPerSecond = 0
+        estimatedSecondsRemaining = nil
+        Task { [weak self] in
+            do {
+                _ = try await Task.detached {
+                    try IPSWValidator.validate(url: url, firmware: firmware)
+                }.value
+                self?.complete(url)
+            } catch {
+                let invalid = url.deletingPathExtension()
+                    .appendingPathExtension("invalid.ipsw")
+                try? FileManager.default.removeItem(at: invalid)
+                try? FileManager.default.moveItem(at: url, to: invalid)
+                self?.fail(error)
+            }
+        }
     }
 }
 
@@ -248,6 +284,11 @@ extension DownloadManager: URLSessionDownloadDelegate {
             if totalBytesExpectedToWrite > 0 { self.totalBytes = totalBytesExpectedToWrite }
             let denominator = max(1, self.totalBytes)
             self.progress = min(1, Double(totalBytesWritten) / Double(denominator))
+            if self.speedBytesPerSecond > 0, self.totalBytes > totalBytesWritten {
+                self.estimatedSecondsRemaining = Double(self.totalBytes - totalBytesWritten) / self.speedBytesPerSecond
+            } else {
+                self.estimatedSecondsRemaining = nil
+            }
         }
     }
 
@@ -274,7 +315,12 @@ extension DownloadManager: URLSessionDownloadDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             switch result {
-            case .success(let url): self.complete(url)
+            case .success(let url):
+                if let firmware = self.activeFirmware {
+                    self.validateAndComplete(url, firmware: firmware)
+                } else {
+                    self.fail(AppError.message("Потеряны сведения о загруженной прошивке."))
+                }
             case .failure(let error): self.fail(error)
             }
         }
@@ -285,8 +331,22 @@ extension DownloadManager: URLSessionDownloadDelegate {
         task: URLSessionTask,
         didCompleteWithError error: Error?
     ) {
-        guard let error, !context.isPausing() else { return }
-        Task { @MainActor [weak self] in self?.fail(error) }
+        guard let error else { return }
+        let nsError = error as NSError
+        let resumeData = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard self.task === task, !self.context.isPausing() else { return }
+            if let resumeData {
+                try? resumeData.write(to: self.resumeDataURL, options: .atomic)
+                self.task = nil
+                self.speedBytesPerSecond = 0
+                self.estimatedSecondsRemaining = nil
+                self.phase = .paused
+            } else {
+                self.fail(error)
+            }
+        }
     }
 }
 
@@ -301,36 +361,4 @@ private final class DownloadContext: @unchecked Sendable {
     func destination() -> URL? { lock.lock(); defer { lock.unlock() }; return destinationURL }
     func setPausing(_ value: Bool) { lock.lock(); pausing = value; lock.unlock() }
     func isPausing() -> Bool { lock.lock(); defer { lock.unlock() }; return pausing }
-}
-
-enum IPSWValidator {
-    static func validate(url: URL, firmware: Firmware) throws {
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw AppError.message("IPSW-файл не найден: \(url.path)")
-        }
-        let values = try url.resourceValues(forKeys: [.fileSizeKey])
-        let actualSize = Int64(values.fileSize ?? 0)
-        if firmware.size > 0, actualSize != firmware.size {
-            throw AppError.message("Размер IPSW не совпадает с каталогом: \(actualSize) вместо \(firmware.size) байт.")
-        }
-        let expected = firmware.sha1.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        if !expected.isEmpty {
-            let actual = try sha1(url: url)
-            guard actual == expected else {
-                throw AppError.message("Контрольная сумма IPSW не совпадает. Файл нельзя использовать.")
-            }
-        }
-    }
-
-    private static func sha1(url: URL) throws -> String {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        var hasher = Insecure.SHA1()
-        while true {
-            let data = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
-            if data.isEmpty { break }
-            hasher.update(data: data)
-        }
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
-    }
 }
