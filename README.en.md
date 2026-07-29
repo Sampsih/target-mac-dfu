@@ -70,6 +70,8 @@ The application is created at `dist/Target Mac DFU.app`. To package it:
 
 The app supports IPSW.me, a custom JSON endpoint, a local catalog, and the IPSWBeta.dev beta catalog. The beta catalog accepts only links hosted on official Apple CDNs. Apple tools make the final firmware eligibility decision during Restore.
 
+For internal and local sources, see the [custom catalog guide](docs/CUSTOM_CATALOG.en.md) and the [ready-to-edit example](examples/custom-catalog.json).
+
 ## Security and limitations
 
 - this is an independent project and is not affiliated with Apple Inc.;

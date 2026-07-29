@@ -16,6 +16,8 @@ fi
 TARGET_MAC_DFU_FAKE=1 "$ROOT/Resources/backend.zsh" self-test >/dev/null
 TARGET_MAC_DFU_FAKE=1 "$ROOT/Resources/backend.zsh" dfu | /usr/bin/grep -q 'STAGE|DFU подтверждён'
 TARGET_MAC_DFU_FAKE=1 "$ROOT/Resources/backend.zsh" recover restore 0xDEMO "$ROOT/README.md" | /usr/bin/grep -q 'restore: 100%'
+"$ROOT/Resources/backend.zsh" firmwares Mac14,7 localCatalog "$ROOT/examples/custom-catalog.json" 1 \
+  | /usr/bin/grep -q '"build":"24F74"'
 
 CLANG_MODULE_CACHE_PATH="$MODULE_CACHE" SWIFT_MODULE_CACHE_PATH="$MODULE_CACHE" \
 /usr/bin/xcrun swiftc "${SDK_ARGS[@]}" \

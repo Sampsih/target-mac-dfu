@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "description": "Example catalog for Target Mac DFU. Replace URLs, sizes and hashes with real values.",
+  "devices": [
+    {
+      "name": "MacBook Pro 14-inch (example)",
+      "identifier": "Mac14,7",
+      "firmwares": [
+        {
+          "version": "15.5",
+          "build": "24F74",
+          "date": "2026-05-20",
+          "size": 0,
+          "url": "https://firmware.example.com/UniversalMac_15.5_24F74_Restore.ipsw",
+          "filename": "UniversalMac_15.5_24F74_Restore.ipsw",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "signed": true,
+          "beta": false
+        }
+      ]
+    }
+  ]
+}
