@@ -26,6 +26,7 @@ A macOS utility that puts a connected Mac into DFU mode with one click, finds an
 - operation history, logs and a diagnostic support bundle;
 - Russian and English interface;
 - demo mode that does not require a connected Mac.
+- a compact Liquid Glass-style interface compatible with macOS 14 and later.
 
 ## Screenshots
 
@@ -35,7 +36,7 @@ A macOS utility that puts a connected Mac into DFU mode with one click, finds an
 
 ## Quick start
 
-1. Download `Target-Mac-DFU-1.1.0.zip` from **Releases**.
+1. Download `Target-Mac-DFU-1.1.1.zip` from **Releases**.
 2. Move `Target Mac DFU.app` to **Applications**.
 3. Install Apple Configurator and Automation Tools if prompted.
 4. Connect the host Mac directly to the correct DFU port on the target Mac with a data-capable USB-C cable.

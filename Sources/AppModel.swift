@@ -68,7 +68,7 @@ final class AppModel: ObservableObject {
     var isRecoveryRunning: Bool { sessionPhase == .recovering }
     var cfgutilReady: Bool { toolStatus?.cfgutilInstalled == true }
     var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.1"
     }
     var preflightReady: Bool {
         !preflightChecks.isEmpty && !preflightChecks.contains(where: \.blocksRestore)

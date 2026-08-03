@@ -1,19 +1,91 @@
 import SwiftUI
 import AppKit
 
+enum InterfaceMetrics {
+    static let cardCorner: CGFloat = 18
+    static let innerCorner: CGFloat = 12
+    static let cardPadding: CGFloat = 16
+    static let pagePadding: CGFloat = 18
+    static let sectionSpacing: CGFloat = 14
+    static let controlSpacing: CGFloat = 10
+    static let sidebarWidth: CGFloat = 232
+}
+
+struct AppBackdrop: View {
+    var body: some View {
+        ZStack {
+            Color(nsColor: .windowBackgroundColor)
+            LinearGradient(
+                colors: [.blue.opacity(0.025), .clear, .cyan.opacity(0.035)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            RadialGradient(
+                colors: [.blue.opacity(0.11), .clear],
+                center: .topTrailing,
+                startRadius: 0,
+                endRadius: 560
+            )
+            RadialGradient(
+                colors: [.cyan.opacity(0.065), .clear],
+                center: .bottomLeading,
+                startRadius: 0,
+                endRadius: 460
+            )
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+}
+
 struct GlassCard<Content: View>: View {
     private let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
 
-    var body: some View {
+    private var cardContent: some View {
         content
-            .padding(20)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(LinearGradient(colors: [.white.opacity(0.55), .blue.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing))
-            }
-            .shadow(color: .black.opacity(0.07), radius: 18, y: 8)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(InterfaceMetrics.cardPadding)
+    }
+
+    private var outline: some View {
+        RoundedRectangle(cornerRadius: InterfaceMetrics.cardCorner, style: .continuous)
+            .stroke(
+                LinearGradient(
+                    colors: [.white.opacity(0.48), .white.opacity(0.10), .blue.opacity(0.18)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 0.8
+            )
+    }
+
+    @ViewBuilder
+    var body: some View {
+#if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            cardContent
+                .background {
+                    Color.clear
+                        .glassEffect(.regular, in: .rect(cornerRadius: InterfaceMetrics.cardCorner))
+                }
+                .overlay(outline)
+        } else {
+            fallbackCard
+        }
+#else
+        fallbackCard
+#endif
+    }
+
+    private var fallbackCard: some View {
+        cardContent
+            .background(
+                .thinMaterial,
+                in: RoundedRectangle(cornerRadius: InterfaceMetrics.cardCorner, style: .continuous)
+            )
+            .overlay(outline)
+            .shadow(color: .black.opacity(0.08), radius: 11, y: 4)
     }
 }
 
@@ -22,38 +94,44 @@ struct Sidebar: View {
     @ObservedObject var settings: AppSettings
 
     var body: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 9) {
+        VStack(spacing: 12) {
+            VStack(spacing: 6) {
                 Image(systemName: "laptopcomputer.and.arrow.down")
-                    .font(.system(size: 42))
-                    .frame(width: 82, height: 82)
-                    .background(.blue.gradient, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .font(.system(size: 32, weight: .medium))
+                    .frame(width: 62, height: 62)
+                    .background(.blue.gradient, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                     .foregroundStyle(.white)
-                Text("Target Mac DFU").font(.title2.bold())
-                Text("Guided DFU & Restore").font(.caption).foregroundStyle(.secondary)
+                Text("Target Mac DFU").font(.headline.bold())
+                Text("Guided DFU & Restore").font(.caption2).foregroundStyle(.secondary)
             }
-            .padding(.top, 16)
+            .padding(.top, 8)
 
-            VStack(spacing: 5) {
+            VStack(spacing: 3) {
                 ForEach(SectionItem.allCases) { item in
                     Button {
                         selection = item
                     } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: item.icon).frame(width: 22)
-                            Text(item.title(settings.language))
+                        HStack(spacing: 10) {
+                            Image(systemName: item.icon).frame(width: 19)
+                            Text(item.title(settings.language)).font(.callout)
                             Spacer()
                         }
-                        .padding(.horizontal, 13)
-                        .frame(height: 43)
+                        .padding(.horizontal, 11)
+                        .frame(height: 37)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(selection == item ? .white : .secondary)
                     .background(
-                        selection == item ? AnyShapeStyle(.blue.gradient) : AnyShapeStyle(.clear),
-                        in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        selection == item ? AnyShapeStyle(.blue.opacity(0.78)) : AnyShapeStyle(.clear),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
                     )
+                    .overlay {
+                        if selection == item {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(.white.opacity(0.28), lineWidth: 0.7)
+                        }
+                    }
                 }
             }
 
@@ -66,13 +144,14 @@ struct Sidebar: View {
             )
             .font(.caption.bold())
             .foregroundStyle(settings.demoMode ? .orange : .green)
-            .padding(12)
+            .padding(9)
             .frame(maxWidth: .infinity)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 14))
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: InterfaceMetrics.innerCorner))
         }
-        .padding(16)
-        .frame(width: 270)
+        .padding(12)
+        .frame(width: InterfaceMetrics.sidebarWidth)
         .background(.ultraThinMaterial)
+        .overlay(alignment: .trailing) { Rectangle().fill(.white.opacity(0.12)).frame(width: 0.7) }
     }
 }
 
@@ -97,19 +176,13 @@ struct ContentView: View {
                         case .settings: SettingsView(model: model)
                         }
                     }
-                    .frame(maxWidth: .infinity, minHeight: 760, alignment: .top)
-                    .padding(24)
+                    .frame(maxWidth: .infinity, minHeight: 660, alignment: .top)
+                    .padding(InterfaceMetrics.pagePadding)
                 }
                 StatusBar(model: model)
             }
         }
-        .background(
-            LinearGradient(
-                colors: [Color(nsColor: .windowBackgroundColor), .blue.opacity(0.08)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .background { AppBackdrop() }
         .alert(
             "Target Mac DFU",
             isPresented: Binding(
@@ -131,15 +204,15 @@ struct PageHeader: View {
     var action: AnyView?
 
     var body: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.largeTitle.bold())
-                Text(subtitle).foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.title.bold())
+                Text(subtitle).font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
             action
         }
-        .padding(.bottom, 4)
+        .padding(.horizontal, 2)
     }
 }
 
@@ -206,7 +279,7 @@ struct OverviewView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: InterfaceMetrics.sectionSpacing) {
             PageHeader(
                 title: L10n.text("Восстановление Mac", "Restore a Mac", model.language),
                 subtitle: L10n.text(
@@ -226,14 +299,14 @@ struct OverviewView: View {
             WorkflowProgressCard(model: model)
             PrimaryActionCard(model: model)
             DeviceSummaryCard(model: model)
-                .frame(minHeight: 220)
+                .frame(height: 176)
 
             if model.device != nil {
-                HStack(alignment: .top, spacing: 18) {
+                HStack(alignment: .top, spacing: InterfaceMetrics.sectionSpacing) {
                     FirmwareList(model: model, compact: true)
-                    QuickRecoveryCard(model: model).frame(width: 390)
+                    QuickRecoveryCard(model: model).frame(width: 344)
                 }
-                .frame(minHeight: 360)
+                .frame(minHeight: 302)
             }
         }
     }
@@ -266,10 +339,10 @@ struct WorkflowProgressCard: View {
     private func step(_ number: Int, _ title: String, _ icon: String) -> some View {
         let completed = number < currentStep || (number == 4 && model.sessionPhase == .completed)
         let active = number == currentStep && !completed
-        return VStack(spacing: 7) {
+        return VStack(spacing: 5) {
             Image(systemName: completed ? "checkmark" : icon)
-                .font(.headline)
-                .frame(width: 38, height: 38)
+                .font(.callout.bold())
+                .frame(width: 33, height: 33)
                 .foregroundStyle(completed || active ? .white : .secondary)
                 .background(
                     completed ? AnyShapeStyle(.green.gradient) :
@@ -278,7 +351,7 @@ struct WorkflowProgressCard: View {
                 )
             Text(title).font(.caption.bold()).foregroundStyle(active ? .primary : .secondary)
         }
-        .frame(minWidth: 105)
+        .frame(minWidth: 88)
         .accessibilityLabel("\(number). \(title)")
     }
 
@@ -286,8 +359,8 @@ struct WorkflowProgressCard: View {
         Capsule()
             .fill(number < currentStep ? Color.green.opacity(0.65) : Color.secondary.opacity(0.18))
             .frame(maxWidth: .infinity, minHeight: 3, maxHeight: 3)
-            .padding(.horizontal, 8)
-            .padding(.bottom, 25)
+            .padding(.horizontal, 6)
+            .padding(.bottom, 22)
     }
 }
 
@@ -296,17 +369,17 @@ struct PrimaryActionCard: View {
 
     var body: some View {
         GlassCard {
-            HStack(spacing: 22) {
+            HStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(size: 43, weight: .semibold))
+                    .font(.system(size: 32, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(accent)
-                    .frame(width: 74, height: 74)
-                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                VStack(alignment: .leading, spacing: 6) {
+                    .frame(width: 58, height: 58)
+                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                VStack(alignment: .leading, spacing: 4) {
                     Text(kicker).font(.caption.bold()).foregroundStyle(accent).textCase(.uppercase)
-                    Text(title).font(.title2.bold())
-                    Text(explanation).foregroundStyle(.secondary)
+                    Text(title).font(.title3.bold())
+                    Text(explanation).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 20)
                 Button(buttonTitle, systemImage: buttonIcon, action: action)
@@ -375,12 +448,12 @@ struct DeviceSummaryCard: View {
     @ObservedObject var model: AppModel
     var body: some View {
         GlassCard {
-            HStack(spacing: 24) {
+            HStack(spacing: 16) {
                 Image(systemName: model.device == nil ? "laptopcomputer.slash" : "laptopcomputer")
-                    .resizable().scaledToFit().frame(width: 180, height: 125)
+                    .resizable().scaledToFit().frame(width: 132, height: 92)
                     .symbolRenderingMode(.hierarchical).foregroundStyle(model.device == nil ? .gray : .blue)
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(model.deviceName).font(.title2.bold())
+                VStack(alignment: .leading, spacing: 9) {
+                    Text(model.deviceName).font(.title3.bold())
                     Divider()
                     InfoRow(title: "Model Identifier", value: model.device?.type ?? "—")
                     InfoRow(title: "ECID", value: model.device?.maskedECID ?? "—")
@@ -388,7 +461,7 @@ struct DeviceSummaryCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .accessibilityElement(children: .combine)
     }
@@ -400,7 +473,7 @@ struct InfoRow: View {
     var accent: Color = .primary
     var body: some View {
         HStack {
-            Text(title).foregroundStyle(.secondary).frame(width: 130, alignment: .leading)
+            Text(title).font(.callout).foregroundStyle(.secondary).frame(width: 115, alignment: .leading)
             Text(value).foregroundStyle(accent).textSelection(.enabled)
             Spacer()
         }
@@ -411,7 +484,7 @@ struct SafetyStepsCard: View {
     @ObservedObject var model: AppModel
     var body: some View {
         GlassCard {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: InterfaceMetrics.sectionSpacing) {
                 Label(
                     model.device == nil
                         ? L10n.text("Ожидание Mac", "Waiting for Mac", model.language)
@@ -444,12 +517,12 @@ struct FirmwareList: View {
 
     var body: some View {
         GlassCard {
-            VStack(alignment: .leading, spacing: 13) {
+            VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
                 HStack {
                     VStack(alignment: .leading) {
                         Text((model.settings.includeBetaFirmwares || model.settings.firmwareSource == .ipswBeta)
                             ? L10n.text("IPSW, включая beta", "IPSW, including beta", model.language)
-                            : L10n.text("Доступные IPSW", "Available IPSW", model.language)).font(.title2.bold())
+                            : L10n.text("Доступные IPSW", "Available IPSW", model.language)).font(.title3.bold())
                         Text(model.settings.firmwareSource.title(model.language)).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -464,7 +537,7 @@ struct FirmwareList: View {
                             ? L10n.text("Сначала подключите Mac в DFU", "Connect a Mac in DFU first", model.language)
                             : L10n.text("Обновите каталог", "Refresh the catalog", model.language))
                     )
-                    .frame(minHeight: compact ? 190 : 330)
+                    .frame(minHeight: compact ? 148 : 250)
                 } else {
                     VStack(spacing: 5) {
                         ForEach(compact ? Array(model.firmwares.prefix(4)) : model.firmwares) { firmware in
@@ -504,7 +577,7 @@ struct FirmwareRow: View {
                 Image(systemName: model.isDownloaded(firmware) ? "checkmark.icloud.fill" : "icloud.and.arrow.down")
                     .foregroundStyle(model.isDownloaded(firmware) ? .green : (selected ? .white : .secondary))
             }
-            .padding(.horizontal, 11).frame(height: 50)
+            .padding(.horizontal, 10).frame(height: 44)
             .foregroundStyle(selected ? .white : .primary)
             .background(selected ? AnyShapeStyle(.blue.gradient) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())
@@ -519,8 +592,8 @@ struct QuickRecoveryCard: View {
     @ObservedObject var model: AppModel
     var body: some View {
         GlassCard {
-            VStack(alignment: .leading, spacing: 15) {
-                Text(L10n.text("Следующее действие", "Next Action", model.language)).font(.title2.bold())
+            VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
+                Text(L10n.text("Следующее действие", "Next Action", model.language)).font(.title3.bold())
                 Label(L10n.text("Restore — стереть и восстановить", "Restore — erase and reinstall", model.language), systemImage: "externaldrive.badge.xmark")
                     .font(.headline)
                 Text(L10n.text("Полностью стирает Target Mac и восстанавливает его заново. Требует двойного подтверждения.", "Completely erases the target Mac and restores it. Requires double confirmation.", model.language))
@@ -541,22 +614,22 @@ struct QuickRecoveryCard: View {
 struct DFUGuideView: View {
     @ObservedObject var model: AppModel
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: InterfaceMetrics.sectionSpacing) {
             PageHeader(
                 title: L10n.text("DFU одним нажатием", "One-Click DFU", model.language),
                 subtitle: L10n.text("Подключите Target Mac кабелем и отправьте аппаратную команду DFU.", "Connect the target Mac and send the hardware DFU command.", model.language),
                 action: AnyView(Button(L10n.text("Проверить DFU", "Check DFU", model.language), systemImage: "arrow.clockwise") { model.checkDFUPresenceNow() }.disabled(model.busy))
             )
             GlassCard {
-                HStack(spacing: 24) {
+                HStack(spacing: 16) {
                     Image(systemName: model.dfuDetected ? "checkmark.circle.fill" : "bolt.horizontal.circle.fill")
-                        .font(.system(size: 70))
+                        .font(.system(size: 54))
                         .foregroundStyle(model.dfuDetected ? .green : .blue)
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
                         Text(!model.dfuDetected
                             ? L10n.text("Автоматически отправить Mac в DFU", "Send Mac to DFU Automatically", model.language)
                             : L10n.text("Mac уже находится в DFU", "Mac Is Already in DFU", model.language))
-                            .font(.title2.bold())
+                            .font(.title3.bold())
                         Text(L10n.text(
                             "Подключите Target Mac напрямую к Host Mac. Кабель вставьте в DFU-порт Target Mac — нужный порт можно проверить по таблице Apple. Host Mac должен быть на Apple silicon.",
                             "Connect the target Mac directly to the host Mac. Use the target Mac DFU port, shown in Apple's table. The host Mac must use Apple silicon.",
@@ -578,12 +651,12 @@ struct DFUGuideView: View {
                 }
             }
             GlassCard {
-                VStack(alignment: .leading, spacing: 15) {
+                VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
                     Label(L10n.text("Запасной вариант: ручной вход в DFU", "Fallback: Manual DFU Entry", model.language), systemImage: "hand.raised.fill")
-                        .font(.title2.bold())
+                        .font(.title3.bold())
                     Text(L10n.text("Используйте только если кнопка выше не сработала. Сначала подключите кабель в правильный DFU-порт.", "Use this only if the button above fails. First connect the cable to the correct DFU port.", model.language))
                         .foregroundStyle(.secondary)
-                    HStack(alignment: .top, spacing: 18) {
+                    HStack(alignment: .top, spacing: InterfaceMetrics.sectionSpacing) {
                         manualCard(
                             L10n.text("MacBook с Apple silicon", "Apple silicon MacBook", model.language),
                             L10n.text("1. Удерживайте Power/Touch ID до 10 секунд, пока Mac не выключится.\n2. Нажмите и отпустите Power, затем сразу зажмите вместе: левый Control, левый Option, правый Shift и Power.\n3. Держите все четыре клавиши около 10 секунд.\n4. Отпустите Control, Option и Shift, но продолжайте удерживать Power ещё до 10 секунд, пока DFU не появится в Finder.", "1. Hold Power/Touch ID for up to 10 seconds until the Mac turns off.\n2. Press and release Power, then immediately hold left Control, left Option, right Shift, and Power together.\n3. Hold all four for about 10 seconds.\n4. Release Control, Option, and Shift, but keep holding Power for up to 10 more seconds until DFU appears in Finder.", model.language)
@@ -608,21 +681,21 @@ struct DFUGuideView: View {
             Text(title).font(.headline)
             Text(text).font(.callout).foregroundStyle(.secondary).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(13)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.quaternary.opacity(0.7), in: RoundedRectangle(cornerRadius: 14))
+        .background(.quaternary.opacity(0.7), in: RoundedRectangle(cornerRadius: InterfaceMetrics.innerCorner))
     }
 }
 
 struct DeviceInfoView: View {
     @ObservedObject var model: AppModel
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: InterfaceMetrics.sectionSpacing) {
             PageHeader(title: L10n.text("Устройство", "Device Info", model.language), subtitle: L10n.text("Сессия привязана к ECID; смена устройства блокирует операцию.", "The session is bound to ECID; a device change blocks the operation.", model.language), action: nil)
             DeviceSummaryCard(model: model)
             GlassCard {
                 VStack(alignment: .leading, spacing: 12) {
-                    Label(L10n.text("Правила безопасности", "Safety Rules", model.language), systemImage: "lock.shield.fill").font(.title2.bold())
+                    Label(L10n.text("Правила безопасности", "Safety Rules", model.language), systemImage: "lock.shield.fill").font(.title3.bold())
                     Text(L10n.text("• Одно устройство на сессию.\n• Точная модель и ECID повторно проверяются перед RecoveryJob.\n• Потеря USB переводит процесс в детерминированное состояние Recovery Needed.\n• Чувствительный ECID маскируется в истории и support bundle.", "• One device per session.\n• Exact model and ECID are rechecked before RecoveryJob.\n• USB loss produces a deterministic Recovery Needed state.\n• Sensitive ECID is masked in history and support bundles.", model.language))
                         .textSelection(.enabled)
                 }
@@ -634,7 +707,7 @@ struct DeviceInfoView: View {
 struct LibraryView: View {
     @ObservedObject var model: AppModel
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: InterfaceMetrics.sectionSpacing) {
             PageHeader(
                 title: L10n.text("Библиотека IPSW", "IPSW Library", model.language),
                 subtitle: L10n.text("Совместимые образы из выбранного каталога для определённой модели.", "Model-compatible images from the selected device catalog.", model.language),
@@ -660,19 +733,19 @@ struct DownloadsView: View {
     @ObservedObject private var manager = DownloadManager.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: InterfaceMetrics.sectionSpacing) {
             PageHeader(
                 title: L10n.text("Загрузки", "Downloads", model.language),
                 subtitle: model.settings.downloadDirectoryPath,
                 action: AnyView(Button(L10n.text("Показать в Finder", "Show in Finder", model.language), systemImage: "folder") { model.revealDownloads() })
             )
             GlassCard {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
                     HStack {
                         Image(systemName: manager.phase == .completed ? "checkmark.circle.fill" : "arrow.down.circle.fill")
                             .font(.system(size: 38)).foregroundStyle(manager.phase == .completed ? .green : .blue)
                         VStack(alignment: .leading) {
-                            Text(manager.activeFirmware.map { "macOS \($0.version) (\($0.build))" } ?? L10n.text("Нет активной загрузки", "No active download", model.language)).font(.title2.bold())
+                            Text(manager.activeFirmware.map { "macOS \($0.version) (\($0.build))" } ?? L10n.text("Нет активной загрузки", "No active download", model.language)).font(.title3.bold())
                             Text(manager.activeFirmware?.filename ?? L10n.text("Выберите IPSW в библиотеке", "Choose an IPSW in the library", model.language)).foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -712,7 +785,7 @@ struct DownloadsView: View {
                             .disabled(manager.phase.isActive)
                     }
                 }
-                .frame(minHeight: 220)
+                .frame(minHeight: 178)
             }
             GlassCard {
                 VStack(alignment: .leading, spacing: 8) {
@@ -746,13 +819,13 @@ struct DownloadsView: View {
 struct RecoveryView: View {
     @ObservedObject var model: AppModel
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: InterfaceMetrics.sectionSpacing) {
             PageHeader(title: L10n.text("Restore", "Restore", model.language), subtitle: L10n.text("Полное стирание, повторная проверка ECID и двойное подтверждение.", "Full erase, ECID recheck, and double confirmation.", model.language), action: nil)
-            HStack(alignment: .top, spacing: 18) {
+            HStack(alignment: .top, spacing: InterfaceMetrics.sectionSpacing) {
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
                         Label(L10n.text("Restore — стереть и восстановить", "Restore — erase and reinstall", model.language), systemImage: "externaldrive.badge.xmark")
-                            .font(.title2.bold()).foregroundStyle(.red)
+                            .font(.title3.bold()).foregroundStyle(.red)
                         Text(L10n.text("Все данные на Target Mac будут удалены. После завершения Mac запустит Ассистент настройки.", "All data on the target Mac will be erased. Setup Assistant starts when complete.", model.language))
                             .foregroundStyle(.secondary)
                         Button(L10n.text("Запустить Restore", "Start Restore", model.language), systemImage: "externaldrive.badge.xmark") { model.requestRecovery() }
@@ -761,8 +834,8 @@ struct RecoveryView: View {
                     }
                 }
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text(L10n.text("Предварительная проверка", "Preflight", model.language)).font(.title2.bold())
+                    VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
+                        Text(L10n.text("Предварительная проверка", "Preflight", model.language)).font(.title3.bold())
                         if model.preflightRunning {
                             HStack {
                                 ProgressView().controlSize(.small)
@@ -792,13 +865,13 @@ struct RecoveryView: View {
                         Divider()
                         Text(L10n.text("Во время активного RecoveryJob кнопка отмены намеренно отсутствует: cfgutil должен завершить безопасную точку сам.", "During an active RecoveryJob there is intentionally no cancel button; cfgutil must reach its own safe point.", model.language)).font(.caption).foregroundStyle(.secondary)
                     }
-                    .frame(minWidth: 390)
+                    .frame(minWidth: 344)
                 }
             }
             if model.isRecoveryRunning {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        Label(model.status, systemImage: "wrench.and.screwdriver.fill").font(.title2.bold())
+                        Label(model.status, systemImage: "wrench.and.screwdriver.fill").font(.title3.bold())
                         ProgressView(value: model.recoveryProgress)
                         Text("\(Int(model.recoveryProgress * 100))% · \(model.recoveryStage.isEmpty ? model.detail : model.recoveryStage)").monospacedDigit()
                     }
@@ -825,7 +898,7 @@ struct HistoryView: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var history = HistoryStore.shared
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: InterfaceMetrics.sectionSpacing) {
             PageHeader(
                 title: L10n.text("История", "History", model.language),
                 subtitle: L10n.text("Локальная история операций с маскированным ECID.", "Local operation history with masked ECID.", model.language),
@@ -837,7 +910,7 @@ struct HistoryView: View {
             )
             GlassCard {
                 if history.records.isEmpty {
-                    ContentUnavailableView(L10n.text("Операций пока нет", "No operations yet", model.language), systemImage: "clock", description: Text(L10n.text("Завершённые Restore появятся здесь.", "Completed Restore jobs appear here.", model.language))).frame(minHeight: 330)
+                    ContentUnavailableView(L10n.text("Операций пока нет", "No operations yet", model.language), systemImage: "clock", description: Text(L10n.text("Завершённые Restore появятся здесь.", "Completed Restore jobs appear here.", model.language))).frame(minHeight: 250)
                 } else {
                     VStack(spacing: 6) {
                         ForEach(history.records) { record in
@@ -874,12 +947,12 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: InterfaceMetrics.sectionSpacing) {
             PageHeader(title: L10n.text("Настройки", "Settings", settings.language), subtitle: L10n.text("Хранилище, язык, диагностика и тестовый адаптер.", "Storage, language, diagnostics, and test adapter.", settings.language), action: nil)
             ToolSetupCard(model: model)
             GlassCard {
-                VStack(alignment: .leading, spacing: 15) {
-                    Label(L10n.text("Папка IPSW по умолчанию", "Default IPSW Folder", settings.language), systemImage: "folder.fill").font(.title2.bold())
+                VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
+                    Label(L10n.text("Папка IPSW по умолчанию", "Default IPSW Folder", settings.language), systemImage: "folder.fill").font(.title3.bold())
                     Text(settings.downloadDirectoryPath).textSelection(.enabled).foregroundStyle(.secondary)
                     HStack {
                         Button(L10n.text("Выбрать папку…", "Choose Folder…", settings.language), systemImage: "folder.badge.gearshape") { settings.chooseDownloadDirectory(); model.updateCacheSize() }.disabled(model.downloads.phase.isActive)
@@ -901,8 +974,8 @@ struct SettingsView: View {
                 }
             }
             GlassCard {
-                VStack(alignment: .leading, spacing: 14) {
-                    Label(L10n.text("Источник IPSW", "IPSW Source", settings.language), systemImage: "server.rack").font(.title2.bold())
+                VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
+                    Label(L10n.text("Источник IPSW", "IPSW Source", settings.language), systemImage: "server.rack").font(.title3.bold())
                     Picker(L10n.text("Каталог", "Catalog", settings.language), selection: $settings.firmwareSource) {
                         ForEach(FirmwareSourceKind.allCases) { source in
                             Text(source.title(settings.language)).tag(source)
@@ -950,27 +1023,27 @@ struct SettingsView: View {
                     }
                 }
             }
-            HStack(alignment: .top, spacing: 18) {
+            HStack(alignment: .top, spacing: InterfaceMetrics.sectionSpacing) {
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Label(L10n.text("Интерфейс", "Interface", settings.language), systemImage: "character.bubble.fill").font(.title2.bold())
+                    VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
+                        Label(L10n.text("Интерфейс", "Interface", settings.language), systemImage: "character.bubble.fill").font(.title3.bold())
                         Picker(L10n.text("Язык", "Language", settings.language), selection: $settings.language) {
                             ForEach(AppLanguage.allCases) { language in Text(language.title).tag(language) }
                         }
                         .pickerStyle(.segmented)
                         Toggle(L10n.text("Автоматически обновлять каталог", "Automatically refresh catalog", settings.language), isOn: $settings.automaticCatalogRefresh)
                         Text(L10n.text("Основные действия имеют VoiceOver-метки и клавиатурные команды: ⌘R — обновить, ⌘P — пауза/продолжение.", "Primary actions include VoiceOver labels and keyboard commands: ⌘R refresh, ⌘P pause/resume.", settings.language)).font(.caption).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    }.frame(maxWidth: .infinity, minHeight: 158, alignment: .topLeading)
                 }
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Label(L10n.text("Приватность и тесты", "Privacy & Testing", settings.language), systemImage: "hand.raised.fill").font(.title2.bold())
+                    VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
+                        Label(L10n.text("Приватность и тесты", "Privacy & Testing", settings.language), systemImage: "hand.raised.fill").font(.title3.bold())
                         Label(L10n.text("Телеметрии и фоновой отправки данных нет", "No telemetry or background data uploads", settings.language), systemImage: "checkmark.shield.fill")
                             .foregroundStyle(.green)
                         Text(L10n.text("История операций и настройки хранятся только на этом Mac. Support bundle создаётся лишь по вашей команде.", "Operation history and settings stay on this Mac. A support bundle is created only when you request it.", settings.language)).font(.caption).foregroundStyle(.secondary)
                         Toggle(L10n.text("Демо-режим без реального Mac", "Demo mode without a real Mac", settings.language), isOn: $settings.demoMode)
                         Text(L10n.text("Fake-адаптер позволяет пройти UI-сценарий и проверить ошибки без подключённого устройства.", "The fake adapter exercises the UI flow and errors without attached hardware.", settings.language)).font(.caption).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    }.frame(maxWidth: .infinity, minHeight: 158, alignment: .topLeading)
                 }
             }
             GlassCard {
@@ -1037,7 +1110,7 @@ struct StatusBar: View {
             Spacer()
             Text(model.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
-        .padding(.horizontal, 20).frame(height: 48).background(.ultraThinMaterial)
+        .padding(.horizontal, 16).frame(height: 44).background(.ultraThinMaterial)
     }
 
     private var icon: String {

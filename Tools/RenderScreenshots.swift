@@ -22,20 +22,14 @@ private struct ScreenshotShell<Content: View>: View {
             VStack(spacing: 0) {
                 ScrollView {
                     content
-                        .frame(maxWidth: .infinity, minHeight: 780, alignment: .top)
-                        .padding(24)
+                        .frame(maxWidth: .infinity, minHeight: 660, alignment: .top)
+                        .padding(InterfaceMetrics.pagePadding)
                 }
                 StatusBar(model: model)
             }
         }
-        .frame(width: 1480, height: 940)
-        .background(
-            LinearGradient(
-                colors: [Color(nsColor: .windowBackgroundColor), .blue.opacity(0.08)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .frame(width: 1360, height: 820)
+        .background { AppBackdrop() }
         .preferredColorScheme(.dark)
     }
 }
@@ -49,6 +43,7 @@ struct RenderScreenshots {
         }
         let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
 
         AppSettings.shared.demoMode = true
         let model = AppModel()
@@ -74,7 +69,8 @@ struct RenderScreenshots {
     @MainActor
     private static func render<V: View>(_ root: V, to destination: URL) throws {
         let view = NSHostingView(rootView: root)
-        view.frame = NSRect(x: 0, y: 0, width: 1480, height: 940)
+        view.appearance = NSAppearance(named: .darkAqua)
+        view.frame = NSRect(x: 0, y: 0, width: 1360, height: 820)
         view.layoutSubtreeIfNeeded()
         guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
             throw AppError.message("Could not create screenshot bitmap.")

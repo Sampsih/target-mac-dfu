@@ -20,9 +20,9 @@ struct TargetMacDFUApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 1220, minHeight: 780)
+                .frame(minWidth: 1080, minHeight: 690)
         }
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1480, height: 940)
+        .defaultSize(width: 1360, height: 820)
     }
 }
