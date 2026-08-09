@@ -45,6 +45,9 @@ struct RenderScreenshots {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
 
+        let previewLanguage = ProcessInfo.processInfo.environment["TARGET_MAC_DFU_SCREENSHOT_LANGUAGE"]
+            .flatMap(AppLanguage.init(rawValue:)) ?? .russian
+        AppSettings.shared.language = previewLanguage
         AppSettings.shared.demoMode = true
         let model = AppModel()
         try? await Task.sleep(nanoseconds: 2_000_000_000)

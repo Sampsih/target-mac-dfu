@@ -3,9 +3,22 @@ import Foundation
 enum AppLanguage: String, Codable, CaseIterable, Identifiable {
     case russian = "ru"
     case english = "en"
+    case french = "fr"
+    case german = "de"
+    case spanish = "es"
 
     var id: String { rawValue }
-    var title: String { self == .russian ? "Русский" : "English" }
+    var title: String {
+        switch self {
+        case .russian: return "Русский"
+        case .english: return "English"
+        case .french: return "Français"
+        case .german: return "Deutsch"
+        case .spanish: return "Español"
+        }
+    }
+
+    var locale: Locale { Locale(identifier: rawValue) }
 }
 
 enum SectionItem: String, CaseIterable, Identifiable {
@@ -34,17 +47,14 @@ enum SectionItem: String, CaseIterable, Identifiable {
     }
 
     func title(_ language: AppLanguage) -> String {
-        let ru = [
-            "overview": "Обзор", "dfu": "Режим DFU", "info": "Устройство",
-            "library": "Библиотека IPSW", "downloads": "Загрузки",
-            "restore": "Восстановление", "history": "История", "settings": "Настройки"
+        let titles: [AppLanguage: [String: String]] = [
+            .russian: ["overview": "Обзор", "dfu": "Режим DFU", "info": "Устройство", "library": "Библиотека IPSW", "downloads": "Загрузки", "restore": "Восстановление", "history": "История", "settings": "Настройки"],
+            .english: ["overview": "Overview", "dfu": "DFU Mode", "info": "Device", "library": "IPSW Library", "downloads": "Downloads", "restore": "Restore", "history": "History", "settings": "Settings"],
+            .french: ["overview": "Aperçu", "dfu": "Mode DFU", "info": "Appareil", "library": "Bibliothèque IPSW", "downloads": "Téléchargements", "restore": "Restauration", "history": "Historique", "settings": "Réglages"],
+            .german: ["overview": "Übersicht", "dfu": "DFU-Modus", "info": "Gerät", "library": "IPSW-Mediathek", "downloads": "Downloads", "restore": "Wiederherstellen", "history": "Verlauf", "settings": "Einstellungen"],
+            .spanish: ["overview": "Resumen", "dfu": "Modo DFU", "info": "Dispositivo", "library": "Biblioteca IPSW", "downloads": "Descargas", "restore": "Restaurar", "history": "Historial", "settings": "Ajustes"]
         ]
-        let en = [
-            "overview": "Overview", "dfu": "DFU Mode", "info": "Device Info",
-            "library": "IPSW Library", "downloads": "Downloads",
-            "restore": "Recovery", "history": "History", "settings": "Settings"
-        ]
-        return (language == .russian ? ru : en)[rawValue] ?? rawValue
+        return titles[language]?[rawValue] ?? titles[.english]?[rawValue] ?? rawValue
     }
 }
 
@@ -96,18 +106,23 @@ enum FirmwareSourceKind: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     func title(_ language: AppLanguage) -> String {
-        switch (self, language) {
-        case (.ipswMe, .russian): return "IPSW.me — онлайн-каталог"
-        case (.ipswBeta, .russian): return "IPSWBeta.dev — beta-каталог"
-        case (.customURL, .russian): return "Собственный HTTPS JSON"
-        case (.localCatalog, .russian): return "Локальный JSON-каталог"
-        case (.bundled, .russian): return "Встроенный каталог"
-        case (.ipswMe, .english): return "IPSW.me — online catalog"
-        case (.ipswBeta, .english): return "IPSWBeta.dev — beta catalog"
-        case (.customURL, .english): return "Custom HTTPS JSON"
-        case (.localCatalog, .english): return "Local JSON catalog"
-        case (.bundled, .english): return "Bundled catalog"
+        let english: String
+        switch self {
+        case .ipswMe: english = "IPSW.me — online catalog"
+        case .ipswBeta: english = "IPSWBeta.dev — beta catalog"
+        case .customURL: english = "Custom HTTPS JSON"
+        case .localCatalog: english = "Local JSON catalog"
+        case .bundled: english = "Bundled catalog"
         }
+        let russian: String
+        switch self {
+        case .ipswMe: russian = "IPSW.me — онлайн-каталог"
+        case .ipswBeta: russian = "IPSWBeta.dev — beta-каталог"
+        case .customURL: russian = "Собственный HTTPS JSON"
+        case .localCatalog: russian = "Локальный JSON-каталог"
+        case .bundled: russian = "Встроенный каталог"
+        }
+        return L10n.text(russian, english, language)
     }
 }
 
@@ -181,11 +196,9 @@ enum RecoveryKind: String, Codable, CaseIterable, Identifiable {
     var icon: String { self == .revive ? "heart.circle.fill" : "trash.circle.fill" }
 
     func title(_ language: AppLanguage) -> String {
-        switch (self, language) {
-        case (.revive, .russian): return "Revive — сохранить данные"
-        case (.restore, .russian): return "Restore — стереть данные"
-        case (.revive, .english): return "Revive — preserve data"
-        case (.restore, .english): return "Restore — erase data"
+        switch self {
+        case .revive: return L10n.text("Revive — сохранить данные", "Revive — preserve data", language)
+        case .restore: return L10n.text("Restore — стереть данные", "Restore — erase data", language)
         }
     }
 }
@@ -243,6 +256,22 @@ enum AppError: LocalizedError {
 
 enum L10n {
     static func text(_ ru: String, _ en: String, _ language: AppLanguage) -> String {
-        language == .russian ? ru : en
+        switch language {
+        case .russian: return ru
+        case .english: return en
+        case .french, .german, .spanish:
+            return LocalizationCatalog.translation(for: en, language: language) ?? en
+        }
+    }
+
+    static func text(
+        _ ru: String,
+        _ en: String,
+        _ language: AppLanguage,
+        replacing values: [String: String]
+    ) -> String {
+        values.reduce(into: text(ru, en, language)) { result, item in
+            result = result.replacingOccurrences(of: "{\(item.key)}", with: item.value)
+        }
     }
 }

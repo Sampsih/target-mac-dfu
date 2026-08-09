@@ -34,6 +34,7 @@ CLANG_MODULE_CACHE_PATH="$MODULE_CACHE" SWIFT_MODULE_CACHE_PATH="$MODULE_CACHE" 
 
 /bin/cp "$ROOT/Resources/backend.zsh" "$RESOURCES/backend.zsh"
 /bin/cp "$ROOT/Resources/firmware-catalog.json" "$RESOURCES/firmware-catalog.json"
+/bin/cp "$ROOT/Resources/localizations.json" "$RESOURCES/localizations.json"
 /bin/cp "$ROOT/Resources/TargetMacDFU.icns" "$RESOURCES/TargetMacDFU.icns"
 /bin/chmod 755 "$RESOURCES/backend.zsh" "$MACOS/TargetMacDFU"
 

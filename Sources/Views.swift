@@ -93,6 +93,9 @@ struct Sidebar: View {
     @Binding var selection: SectionItem
     @ObservedObject var settings: AppSettings
 
+    private let workflowItems: [SectionItem] = [.overview, .dfu, .library, .restore]
+    private let utilityItems: [SectionItem] = [.downloads, .history]
+
     var body: some View {
         VStack(spacing: 12) {
             VStack(spacing: 6) {
@@ -102,40 +105,18 @@ struct Sidebar: View {
                     .background(.blue.gradient, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                     .foregroundStyle(.white)
                 Text("Target Mac DFU").font(.headline.bold())
-                Text("Guided DFU & Restore").font(.caption2).foregroundStyle(.secondary)
+                Text("DFU · IPSW · Restore").font(.caption2).foregroundStyle(.secondary)
             }
             .padding(.top, 8)
 
             VStack(spacing: 3) {
-                ForEach(SectionItem.allCases) { item in
-                    Button {
-                        selection = item
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: item.icon).frame(width: 19)
-                            Text(item.title(settings.language)).font(.callout)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 11)
-                        .frame(height: 37)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(selection == item ? .white : .secondary)
-                    .background(
-                        selection == item ? AnyShapeStyle(.blue.opacity(0.78)) : AnyShapeStyle(.clear),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                    .overlay {
-                        if selection == item {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(.white.opacity(0.28), lineWidth: 0.7)
-                        }
-                    }
-                }
+                ForEach(workflowItems) { navigationButton(for: $0) }
+                Divider().padding(.vertical, 5)
+                ForEach(utilityItems) { navigationButton(for: $0) }
             }
 
             Spacer()
+            navigationButton(for: .settings)
             Label(
                 settings.demoMode
                     ? L10n.text("Демо-адаптер", "Demo adapter", settings.language)
@@ -152,6 +133,33 @@ struct Sidebar: View {
         .frame(width: InterfaceMetrics.sidebarWidth)
         .background(.ultraThinMaterial)
         .overlay(alignment: .trailing) { Rectangle().fill(.white.opacity(0.12)).frame(width: 0.7) }
+    }
+
+    private func navigationButton(for item: SectionItem) -> some View {
+        Button {
+            selection = item
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: item.icon).frame(width: 19)
+                Text(item.title(settings.language)).font(.callout)
+                Spacer()
+            }
+            .padding(.horizontal, 11)
+            .frame(height: 37)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(selection == item ? .white : .secondary)
+        .background(
+            selection == item ? AnyShapeStyle(.blue.opacity(0.78)) : AnyShapeStyle(.clear),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .overlay {
+            if selection == item {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(.white.opacity(0.28), lineWidth: 0.7)
+            }
+        }
     }
 }
 
@@ -195,6 +203,10 @@ struct ContentView: View {
         .onChange(of: settings.demoMode) {
             Task { await model.refreshDevice(silent: false) }
         }
+        .onChange(of: settings.language) {
+            guard !model.busy else { return }
+            Task { await model.refreshDevice(silent: true) }
+        }
     }
 }
 
@@ -206,7 +218,7 @@ struct PageHeader: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.title.bold())
+                Text(title).font(.title2.bold())
                 Text(subtitle).font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
@@ -455,9 +467,13 @@ struct DeviceSummaryCard: View {
                 VStack(alignment: .leading, spacing: 9) {
                     Text(model.deviceName).font(.title3.bold())
                     Divider()
-                    InfoRow(title: "Model Identifier", value: model.device?.type ?? "—")
+                    InfoRow(title: L10n.text("Модель", "Model", model.language), value: model.device?.type ?? "—")
                     InfoRow(title: "ECID", value: model.device?.maskedECID ?? "—")
-                    InfoRow(title: "Mode", value: model.device?.mode ?? "Disconnected", accent: model.device == nil ? .secondary : .green)
+                    InfoRow(
+                        title: L10n.text("Режим", "Mode", model.language),
+                        value: model.device?.mode ?? L10n.text("Не подключён", "Disconnected", model.language),
+                        accent: model.device == nil ? .secondary : .green
+                    )
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -758,9 +774,10 @@ struct DownloadsView: View {
                         if let seconds = manager.estimatedSecondsRemaining, manager.phase == .downloading {
                             Label(
                                 L10n.text(
-                                    "Осталось примерно \(Self.duration(seconds))",
-                                    "About \(Self.duration(seconds)) remaining",
-                                    model.language
+                                    "Осталось примерно {time}",
+                                    "About {time} remaining",
+                                    model.language,
+                                    replacing: ["time": Self.duration(seconds)]
                                 ),
                                 systemImage: "clock"
                             )
@@ -936,10 +953,34 @@ struct HistoryView: View {
     }
 }
 
+private enum SettingsSection: String, CaseIterable, Identifiable {
+    case general
+    case firmware
+    case support
+
+    var id: String { rawValue }
+    var icon: String {
+        switch self {
+        case .general: return "slider.horizontal.3"
+        case .firmware: return "externaldrive.fill"
+        case .support: return "lifepreserver.fill"
+        }
+    }
+
+    func title(_ language: AppLanguage) -> String {
+        switch self {
+        case .general: return L10n.text("Основные", "General", language)
+        case .firmware: return L10n.text("Прошивки", "Firmware", language)
+        case .support: return L10n.text("Помощь", "Support", language)
+        }
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var updateChecker: UpdateChecker
+    @State private var section: SettingsSection = .general
 
     init(model: AppModel) {
         self.model = model
@@ -948,126 +989,132 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: InterfaceMetrics.sectionSpacing) {
-            PageHeader(title: L10n.text("Настройки", "Settings", settings.language), subtitle: L10n.text("Хранилище, язык, диагностика и тестовый адаптер.", "Storage, language, diagnostics, and test adapter.", settings.language), action: nil)
-            ToolSetupCard(model: model)
-            GlassCard {
-                VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
-                    Label(L10n.text("Папка IPSW по умолчанию", "Default IPSW Folder", settings.language), systemImage: "folder.fill").font(.title3.bold())
-                    Text(settings.downloadDirectoryPath).textSelection(.enabled).foregroundStyle(.secondary)
-                    HStack {
-                        Button(L10n.text("Выбрать папку…", "Choose Folder…", settings.language), systemImage: "folder.badge.gearshape") { settings.chooseDownloadDirectory(); model.updateCacheSize() }.disabled(model.downloads.phase.isActive)
-                        Button(L10n.text("Сбросить", "Reset", settings.language)) { settings.resetDownloadDirectory(); model.updateCacheSize() }.disabled(model.downloads.phase.isActive)
-                        Button(L10n.text("Открыть", "Open", settings.language)) { model.revealDownloads() }
-                    }
-                    Divider()
-                    HStack {
-                        Text(L10n.text("Размер кэша", "Cache Size", settings.language))
-                        Spacer()
-                        Text(ByteCountFormatter.string(fromByteCount: model.cacheSize, countStyle: .file)).monospacedDigit()
-                    }
-                    HStack {
-                        Text(L10n.text("Лимит кэша", "Cache Limit", settings.language))
-                        Slider(value: $settings.cacheLimitGB, in: 10...500, step: 10).frame(maxWidth: 330)
-                        Text("\(Int(settings.cacheLimitGB)) GB").monospacedDigit().frame(width: 65)
-                    }
-                    Button(L10n.text("Переместить кэш в Корзину", "Move Cache to Trash", settings.language), systemImage: "trash", role: .destructive) { model.clearCache() }.disabled(model.downloads.phase.isActive)
+            PageHeader(
+                title: L10n.text("Настройки", "Settings", settings.language),
+                subtitle: L10n.text("Только основные параметры — без лишней сложности.", "Only the essential options, kept simple.", settings.language),
+                action: nil
+            )
+            Picker("", selection: $section) {
+                ForEach(SettingsSection.allCases) { item in
+                    Label(item.title(settings.language), systemImage: item.icon).tag(item)
                 }
             }
-            GlassCard {
-                VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
-                    Label(L10n.text("Источник IPSW", "IPSW Source", settings.language), systemImage: "server.rack").font(.title3.bold())
-                    Picker(L10n.text("Каталог", "Catalog", settings.language), selection: $settings.firmwareSource) {
-                        ForEach(FirmwareSourceKind.allCases) { source in
-                            Text(source.title(settings.language)).tag(source)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    switch settings.firmwareSource {
-                    case .ipswMe:
-                        Text(L10n.text("Публичный каталог IPSW.me. Ответ кэшируется для работы при временном сбое сети.", "Public IPSW.me catalog. Responses are cached for temporary network outages.", settings.language))
-                            .font(.caption).foregroundStyle(.secondary)
-                    case .ipswBeta:
-                        Text(L10n.text("Beta-каталог IPSWBeta.dev. Принимаются только ссылки на официальный Apple CDN; актуальность подписи окончательно проверяется средствами Apple при Restore.", "IPSWBeta.dev beta catalog. Only official Apple CDN links are accepted; Apple tools make the final signing check during Restore.", settings.language))
-                            .font(.caption).foregroundStyle(.orange)
-                    case .customURL:
-                        TextField("https://firmware.example.com/catalog.json", text: $settings.customFirmwareURL)
-                            .textFieldStyle(.roundedBorder)
-                        Text(L10n.text("Разрешён только HTTPS. Формат совместим с IPSW.me или внутренним manifest со списком devices/firmwares.", "HTTPS only. The format may match IPSW.me or an internal devices/firmwares manifest.", settings.language))
-                            .font(.caption).foregroundStyle(.secondary)
-                    case .localCatalog:
-                        HStack {
-                            Text(settings.localCatalogPath.isEmpty ? L10n.text("Файл не выбран", "No file selected", settings.language) : settings.localCatalogPath)
-                                .lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
-                            Spacer()
-                            Button(L10n.text("Выбрать JSON…", "Choose JSON…", settings.language), systemImage: "doc.badge.plus") { settings.chooseLocalCatalog() }
-                        }
-                    case .bundled:
-                        Text(L10n.text("Используется Resources/firmware-catalog.json внутри приложения. Каталог изначально пуст и предназначен для корпоративной сборки.", "Uses Resources/firmware-catalog.json inside the app. It is initially empty and intended for a managed internal build.", settings.language))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    if settings.firmwareSource == .ipswBeta {
-                        Label(L10n.text("Beta-режим включён выбранным источником.", "Beta mode is enabled by this source.", settings.language), systemImage: "testtube.2")
-                            .font(.caption).foregroundStyle(.orange)
-                    } else {
-                        Toggle(L10n.text("Показывать beta/RC версии из каталога", "Show beta/RC versions from catalog", settings.language), isOn: $settings.includeBetaFirmwares)
-                    }
-                    if settings.includeBetaFirmwares && settings.firmwareSource != .ipswBeta {
-                        Label(L10n.text("Beta появится только если выбранный источник помечает запись как подписанную. Приложение не обходит проверки Apple.", "Beta appears only when the source marks the entry as signed. The app never bypasses Apple verification.", settings.language), systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption).foregroundStyle(.orange)
-                    }
-                    HStack {
-                        Button(L10n.text("Применить и обновить каталог", "Apply and Refresh Catalog", settings.language), systemImage: "arrow.clockwise") { model.refreshFirmwares() }
-                            .disabled(model.device == nil || model.busy)
-                        Spacer()
-                        Link(L10n.text("Beta software Apple", "Apple Beta Software", settings.language), destination: URL(string: "https://developer.apple.com/support/install-beta")!)
-                    }
-                }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 560)
+
+            switch section {
+            case .general: generalSettings
+            case .firmware: firmwareSettings
+            case .support: supportSettings
             }
-            HStack(alignment: .top, spacing: InterfaceMetrics.sectionSpacing) {
-                GlassCard {
-                    VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
-                        Label(L10n.text("Интерфейс", "Interface", settings.language), systemImage: "character.bubble.fill").font(.title3.bold())
-                        Picker(L10n.text("Язык", "Language", settings.language), selection: $settings.language) {
-                            ForEach(AppLanguage.allCases) { language in Text(language.title).tag(language) }
-                        }
-                        .pickerStyle(.segmented)
-                        Toggle(L10n.text("Автоматически обновлять каталог", "Automatically refresh catalog", settings.language), isOn: $settings.automaticCatalogRefresh)
-                        Text(L10n.text("Основные действия имеют VoiceOver-метки и клавиатурные команды: ⌘R — обновить, ⌘P — пауза/продолжение.", "Primary actions include VoiceOver labels and keyboard commands: ⌘R refresh, ⌘P pause/resume.", settings.language)).font(.caption).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity, minHeight: 158, alignment: .topLeading)
-                }
-                GlassCard {
-                    VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
-                        Label(L10n.text("Приватность и тесты", "Privacy & Testing", settings.language), systemImage: "hand.raised.fill").font(.title3.bold())
-                        Label(L10n.text("Телеметрии и фоновой отправки данных нет", "No telemetry or background data uploads", settings.language), systemImage: "checkmark.shield.fill")
-                            .foregroundStyle(.green)
-                        Text(L10n.text("История операций и настройки хранятся только на этом Mac. Support bundle создаётся лишь по вашей команде.", "Operation history and settings stay on this Mac. A support bundle is created only when you request it.", settings.language)).font(.caption).foregroundStyle(.secondary)
-                        Toggle(L10n.text("Демо-режим без реального Mac", "Demo mode without a real Mac", settings.language), isOn: $settings.demoMode)
-                        Text(L10n.text("Fake-адаптер позволяет пройти UI-сценарий и проверить ошибки без подключённого устройства.", "The fake adapter exercises the UI flow and errors without attached hardware.", settings.language)).font(.caption).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity, minHeight: 158, alignment: .topLeading)
-                }
-            }
-            GlassCard {
+        }
+    }
+
+    @ViewBuilder private var generalSettings: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
+                Label(L10n.text("Язык и поведение", "Language & Behavior", settings.language), systemImage: "character.bubble.fill").font(.title3.bold())
                 HStack {
-                    VStack(alignment: .leading) {
-                        Text("Target Mac DFU \(model.currentVersion)").font(.headline)
-                        updateStatus
-                        Toggle(L10n.text("Автоматически проверять новые версии", "Automatically check for updates", settings.language), isOn: $settings.automaticUpdateChecks)
-                    }
+                    Text(L10n.text("Язык", "Language", settings.language))
                     Spacer()
-                    if case .available = updateChecker.state {
-                        Button(L10n.text("Открыть релиз", "Open Release", settings.language), systemImage: "arrow.up.forward.app") {
-                            model.openAvailableUpdate()
-                        }
-                        .buttonStyle(.borderedProminent)
-                    } else {
-                        Button(L10n.text("Проверить обновления", "Check for Updates", settings.language), systemImage: "arrow.clockwise") {
-                            model.checkForUpdates()
-                        }
-                        .disabled(updateChecker.state == .checking)
+                    Picker("", selection: $settings.language) {
+                        ForEach(AppLanguage.allCases) { language in Text(language.title).tag(language) }
                     }
-                    Button(L10n.text("Открыть журнал", "Open Log", settings.language), systemImage: "doc.text.magnifyingglass") {
-                        NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/TargetMacDFU.log"))
-                    }
+                    .labelsHidden().pickerStyle(.menu).frame(width: 180)
+                }
+                Toggle(L10n.text("Автоматически обновлять каталог", "Automatically refresh catalog", settings.language), isOn: $settings.automaticCatalogRefresh)
+            }
+        }
+        GlassCard {
+            VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
+                Label(L10n.text("Папка IPSW", "IPSW Folder", settings.language), systemImage: "folder.fill").font(.title3.bold())
+                Text(settings.downloadDirectoryPath).font(.callout).textSelection(.enabled).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                HStack {
+                    Button(L10n.text("Выбрать папку…", "Choose Folder…", settings.language), systemImage: "folder.badge.gearshape") { settings.chooseDownloadDirectory(); model.updateCacheSize() }.disabled(model.downloads.phase.isActive)
+                    Button(L10n.text("Открыть", "Open", settings.language)) { model.revealDownloads() }
+                    Button(L10n.text("Сбросить", "Reset", settings.language)) { settings.resetDownloadDirectory(); model.updateCacheSize() }.disabled(model.downloads.phase.isActive)
+                    Spacer()
+                    Text(ByteCountFormatter.string(fromByteCount: model.cacheSize, countStyle: .file)).monospacedDigit().foregroundStyle(.secondary)
+                }
+                Divider()
+                HStack {
+                    Text(L10n.text("Лимит кэша", "Cache Limit", settings.language))
+                    Slider(value: $settings.cacheLimitGB, in: 10...500, step: 10).frame(maxWidth: 330)
+                    Text("\(Int(settings.cacheLimitGB)) GB").monospacedDigit().frame(width: 65)
+                    Spacer()
+                    Button(L10n.text("Очистить", "Clear", settings.language), systemImage: "trash", role: .destructive) { model.clearCache() }.disabled(model.downloads.phase.isActive)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var firmwareSettings: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
+                Label(L10n.text("Источник IPSW", "IPSW Source", settings.language), systemImage: "server.rack").font(.title3.bold())
+                Picker(L10n.text("Каталог", "Catalog", settings.language), selection: $settings.firmwareSource) {
+                    ForEach(FirmwareSourceKind.allCases) { source in Text(source.title(settings.language)).tag(source) }
+                }.pickerStyle(.menu)
+                firmwareSourceDescription
+                if settings.firmwareSource == .ipswBeta {
+                    Label(L10n.text("Beta-режим включён выбранным источником.", "Beta mode is enabled by this source.", settings.language), systemImage: "testtube.2").font(.caption).foregroundStyle(.orange)
+                } else {
+                    Toggle(L10n.text("Показывать beta/RC версии из каталога", "Show beta/RC versions from catalog", settings.language), isOn: $settings.includeBetaFirmwares)
+                }
+                HStack {
+                    Button(L10n.text("Обновить каталог", "Refresh Catalog", settings.language), systemImage: "arrow.clockwise") { model.refreshFirmwares() }.disabled(model.device == nil || model.busy)
+                    Spacer()
+                    Link(L10n.text("Beta software Apple", "Apple Beta Software", settings.language), destination: URL(string: "https://developer.apple.com/support/install-beta")!)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var firmwareSourceDescription: some View {
+        switch settings.firmwareSource {
+        case .ipswMe:
+            Text(L10n.text("Публичный каталог IPSW.me. Данные кэшируются на случай временного сбоя сети.", "Public IPSW.me catalog, cached for temporary network outages.", settings.language)).font(.caption).foregroundStyle(.secondary)
+        case .ipswBeta:
+            Text(L10n.text("Beta-каталог IPSWBeta.dev. Принимаются только ссылки Apple CDN.", "IPSWBeta.dev beta catalog. Only Apple CDN links are accepted.", settings.language)).font(.caption).foregroundStyle(.orange)
+        case .customURL:
+            TextField("https://firmware.example.com/catalog.json", text: $settings.customFirmwareURL).textFieldStyle(.roundedBorder)
+            Text(L10n.text("Только HTTPS и совместимый JSON-каталог.", "HTTPS and a compatible JSON catalog are required.", settings.language)).font(.caption).foregroundStyle(.secondary)
+        case .localCatalog:
+            HStack {
+                Text(settings.localCatalogPath.isEmpty ? L10n.text("Файл не выбран", "No file selected", settings.language) : settings.localCatalogPath).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
+                Spacer()
+                Button(L10n.text("Выбрать JSON…", "Choose JSON…", settings.language), systemImage: "doc.badge.plus") { settings.chooseLocalCatalog() }
+            }
+        case .bundled:
+            Text(L10n.text("Используется каталог, встроенный в приложение.", "Uses the catalog bundled with the app.", settings.language)).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var supportSettings: some View {
+        if !model.cfgutilReady { ToolSetupCard(model: model) }
+        GlassCard {
+            VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
+                Label(L10n.text("Безопасность и проверка", "Safety & Testing", settings.language), systemImage: "checkmark.shield.fill").font(.title3.bold())
+                if model.cfgutilReady {
+                    Label(L10n.text("Automation Tools готовы", "Automation Tools Ready", settings.language), systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                }
+                Label(L10n.text("Телеметрии и фоновой отправки данных нет", "No telemetry or background data uploads", settings.language), systemImage: "hand.raised.fill").foregroundStyle(.green)
+                Toggle(L10n.text("Демо-режим без реального Mac", "Demo mode without a real Mac", settings.language), isOn: $settings.demoMode)
+                Text(L10n.text("Демо-режим позволяет безопасно посмотреть весь интерфейс.", "Demo mode lets you safely explore the complete interface.", settings.language)).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        GlassCard {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Target Mac DFU \(model.currentVersion)").font(.headline)
+                    updateStatus
+                    Toggle(L10n.text("Автоматически проверять новые версии", "Automatically check for updates", settings.language), isOn: $settings.automaticUpdateChecks)
+                }
+                Spacer()
+                Button(L10n.text("Проверить обновления", "Check for Updates", settings.language), systemImage: "arrow.clockwise") { model.checkForUpdates() }.disabled(updateChecker.state == .checking)
+                Button(L10n.text("Открыть журнал", "Open Log", settings.language), systemImage: "doc.text.magnifyingglass") {
+                    NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/TargetMacDFU.log"))
                 }
             }
         }
@@ -1085,7 +1132,7 @@ struct SettingsView: View {
             Label(L10n.text("Установлена актуальная версия.", "You have the latest version.", settings.language), systemImage: "checkmark.circle.fill")
                 .font(.caption).foregroundStyle(.green)
         case .available(let version, _):
-            Label(L10n.text("Доступна версия \(version).", "Version \(version) is available.", settings.language), systemImage: "arrow.down.circle.fill")
+            Label(L10n.text("Доступна версия {version}.", "Version {version} is available.", settings.language, replacing: ["version": version]), systemImage: "arrow.down.circle.fill")
                 .font(.caption).foregroundStyle(.blue)
         case .failed(let message):
             Text(message).font(.caption).foregroundStyle(.orange).lineLimit(2)

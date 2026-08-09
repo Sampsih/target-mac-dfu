@@ -7,6 +7,18 @@ struct CoreTests {
         try expect(UpdateChecker.isNewer("1.1.0", than: "1.0.9"), "semantic version upgrade")
         try expect(!UpdateChecker.isNewer("1.1.0", than: "1.1.0"), "equal semantic versions")
         try expect(!UpdateChecker.isNewer("1.0.9", than: "1.1.0"), "semantic version downgrade")
+        try expect(AppLanguage.allCases.count == 5, "five interface languages")
+        for language in [AppLanguage.french, .german, .spanish] {
+            let settings = L10n.text("Настройки", "Settings", language)
+            try expect(settings != "Settings", "\(language.rawValue) settings translation")
+            let formatted = L10n.text(
+                "Доступно IPSW: {count}",
+                "Available IPSW: {count}",
+                language,
+                replacing: ["count": "3"]
+            )
+            try expect(formatted.contains("3") && !formatted.contains("{count}"), "\(language.rawValue) placeholder translation")
+        }
 
         _ = try IPSWValidator.validateDownloadURL("https://updates.cdn-apple.com/example.ipsw")
         do {

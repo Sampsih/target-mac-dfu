@@ -22,6 +22,7 @@ CLANG_MODULE_CACHE_PATH="$MODULE_CACHE" SWIFT_MODULE_CACHE_PATH="$MODULE_CACHE" 
   "$ROOT"/Sources/BackendClient.swift \
   "$ROOT"/Sources/DownloadManager.swift \
   "$ROOT"/Sources/IPSWValidator.swift \
+  "$ROOT"/Sources/Localization.swift \
   "$ROOT"/Sources/Models.swift \
   "$ROOT"/Sources/SettingsAndHistory.swift \
   "$ROOT"/Sources/UpdateChecker.swift \

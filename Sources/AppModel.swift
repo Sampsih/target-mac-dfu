@@ -68,7 +68,7 @@ final class AppModel: ObservableObject {
     var isRecoveryRunning: Bool { sessionPhase == .recovering }
     var cfgutilReady: Bool { toolStatus?.cfgutilInstalled == true }
     var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.1"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.0"
     }
     var preflightReady: Bool {
         !preflightChecks.isEmpty && !preflightChecks.contains(where: \.blocksRestore)
@@ -245,9 +245,10 @@ final class AppModel: ObservableObject {
             lastCatalogRefresh = Date()
             status = "DFU Mode"
             detail = L10n.text(
-                "Доступно IPSW: \(firmwares.count)",
-                "Available IPSW: \(firmwares.count)",
-                language
+                "Доступно IPSW: {count}",
+                "Available IPSW: {count}",
+                language,
+                replacing: ["count": String(firmwares.count)]
             )
         } catch {
             lastError = error.localizedDescription
@@ -332,7 +333,12 @@ final class AppModel: ObservableObject {
         pendingJob = nil
         guard hasDownloadSpace(for: firmware) else { return }
         sessionPhase = .downloading
-        status = L10n.text("Загрузка macOS \(firmware.version)", "Downloading macOS \(firmware.version)", language)
+        status = L10n.text(
+            "Загрузка macOS {version}",
+            "Downloading macOS {version}",
+            language,
+            replacing: ["version": firmware.version]
+        )
         detail = settings.downloadDirectoryPath
         downloads.start(firmware: firmware, directory: settings.downloadDirectory, demo: settings.demoMode)
         selection = .downloads
@@ -688,9 +694,10 @@ final class AppModel: ObservableObject {
         second.alertStyle = .critical
         second.messageText = L10n.text("Последнее подтверждение стирания", "Final erase confirmation", language)
         second.informativeText = L10n.text(
-            "Убедитесь, что выбрана модель \(device.type) с ECID \(device.maskedECID). После продолжения данные будут стёрты.",
-            "Verify model \(device.type), ECID \(device.maskedECID). Continuing will erase all data.",
-            language
+            "Убедитесь, что выбрана модель {model} с ECID {ecid}. После продолжения данные будут стёрты.",
+            "Verify model {model}, ECID {ecid}. Continuing will erase all data.",
+            language,
+            replacing: ["model": device.type, "ecid": device.maskedECID]
         )
         second.addButton(withTitle: L10n.text("Стереть и восстановить", "Erase and Restore", language))
         second.addButton(withTitle: L10n.text("Назад", "Back", language))
@@ -741,9 +748,10 @@ final class AppModel: ObservableObject {
             let needed = ByteCountFormatter.string(fromByteCount: required, countStyle: .file)
             let free = ByteCountFormatter.string(fromByteCount: available, countStyle: .file)
             lastError = L10n.text(
-                "Недостаточно места: требуется около \(needed), свободно \(free).",
-                "Not enough disk space: about \(needed) required, \(free) available.",
-                language
+                "Недостаточно места: требуется около {needed}, свободно {free}.",
+                "Not enough disk space: about {needed} required, {free} available.",
+                language,
+                replacing: ["needed": needed, "free": free]
             )
             return false
         }

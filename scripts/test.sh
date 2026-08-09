@@ -25,10 +25,11 @@ CLANG_MODULE_CACHE_PATH="$MODULE_CACHE" SWIFT_MODULE_CACHE_PATH="$MODULE_CACHE" 
   -framework Combine \
   -framework CryptoKit \
   "$ROOT/Sources/Models.swift" \
+  "$ROOT/Sources/Localization.swift" \
   "$ROOT/Sources/IPSWValidator.swift" \
   "$ROOT/Sources/UpdateChecker.swift" \
   "$ROOT/Tests/CoreTests.swift" \
   -o "$TEST_BINARY"
 
-"$TEST_BINARY"
+TARGET_MAC_DFU_RESOURCES="$ROOT/Resources" "$TEST_BINARY"
 print "All tests passed"
