@@ -1,6 +1,9 @@
 import SwiftUI
 import AppKit
 
+private let previewWidth = Double(ProcessInfo.processInfo.environment["TARGET_MAC_DFU_SCREENSHOT_WIDTH"] ?? "1360") ?? 1360
+private let previewLight = ProcessInfo.processInfo.environment["TARGET_MAC_DFU_SCREENSHOT_LIGHT"] == "1"
+
 private struct ScreenshotShell<Content: View>: View {
     @ObservedObject var model: AppModel
     let content: Content
@@ -28,9 +31,9 @@ private struct ScreenshotShell<Content: View>: View {
                 StatusBar(model: model)
             }
         }
-        .frame(width: 1360, height: 820)
+        .frame(width: previewWidth, height: 820)
         .background { AppBackdrop() }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(previewLight ? .light : .dark)
     }
 }
 
@@ -43,10 +46,16 @@ struct RenderScreenshots {
         }
         let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-        NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+        NSApplication.shared.appearance = NSAppearance(named: previewLight ? .aqua : .darkAqua)
 
         let previewLanguage = ProcessInfo.processInfo.environment["TARGET_MAC_DFU_SCREENSHOT_LANGUAGE"]
             .flatMap(AppLanguage.init(rawValue:)) ?? .russian
+        let originalLanguage = AppSettings.shared.language
+        let originalDemoMode = AppSettings.shared.demoMode
+        defer {
+            AppSettings.shared.language = originalLanguage
+            AppSettings.shared.demoMode = originalDemoMode
+        }
         AppSettings.shared.language = previewLanguage
         AppSettings.shared.demoMode = true
         let model = AppModel()
@@ -72,8 +81,8 @@ struct RenderScreenshots {
     @MainActor
     private static func render<V: View>(_ root: V, to destination: URL) throws {
         let view = NSHostingView(rootView: root)
-        view.appearance = NSAppearance(named: .darkAqua)
-        view.frame = NSRect(x: 0, y: 0, width: 1360, height: 820)
+        view.appearance = NSAppearance(named: previewLight ? .aqua : .darkAqua)
+        view.frame = NSRect(x: 0, y: 0, width: previewWidth, height: 820)
         view.layoutSubtreeIfNeeded()
         guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
             throw AppError.message("Could not create screenshot bitmap.")

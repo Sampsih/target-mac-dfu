@@ -8,7 +8,7 @@ enum InterfaceMetrics {
     static let pagePadding: CGFloat = 18
     static let sectionSpacing: CGFloat = 14
     static let controlSpacing: CGFloat = 10
-    static let sidebarWidth: CGFloat = 232
+    static let sidebarWidth: CGFloat = 216
 }
 
 struct AppBackdrop: View {
@@ -39,6 +39,8 @@ struct AppBackdrop: View {
 }
 
 struct GlassCard<Content: View>: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     private let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
 
@@ -50,42 +52,49 @@ struct GlassCard<Content: View>: View {
 
     private var outline: some View {
         RoundedRectangle(cornerRadius: InterfaceMetrics.cardCorner, style: .continuous)
-            .stroke(
-                LinearGradient(
-                    colors: [.white.opacity(0.48), .white.opacity(0.10), .blue.opacity(0.18)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: 0.8
-            )
+            .stroke(Color.primary.opacity(contrast == .increased ? 0.45 : 0.10), lineWidth: 1)
     }
 
     @ViewBuilder
     var body: some View {
-#if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
+        if reduceTransparency {
             cardContent
-                .background {
-                    Color.clear
-                        .glassEffect(.regular, in: .rect(cornerRadius: InterfaceMetrics.cardCorner))
-                }
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: InterfaceMetrics.cardCorner))
                 .overlay(outline)
         } else {
             fallbackCard
         }
-#else
-        fallbackCard
-#endif
     }
 
     private var fallbackCard: some View {
         cardContent
             .background(
-                .thinMaterial,
+                .regularMaterial,
                 in: RoundedRectangle(cornerRadius: InterfaceMetrics.cardCorner, style: .continuous)
             )
             .overlay(outline)
-            .shadow(color: .black.opacity(0.08), radius: 11, y: 4)
+            .shadow(color: .black.opacity(0.035), radius: 6, y: 2)
+    }
+}
+
+// Glass belongs to the navigation layer; content cards use standard materials.
+private struct NavigationSurface: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @ViewBuilder var body: some View {
+        if reduceTransparency {
+            Color(nsColor: .windowBackgroundColor)
+        } else {
+#if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                Color.clear.glassEffect(.regular, in: .rect(cornerRadius: 0))
+            } else {
+                Rectangle().fill(.regularMaterial)
+            }
+#else
+            Rectangle().fill(.regularMaterial)
+#endif
+        }
     }
 }
 
@@ -131,8 +140,8 @@ struct Sidebar: View {
         }
         .padding(12)
         .frame(width: InterfaceMetrics.sidebarWidth)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .trailing) { Rectangle().fill(.white.opacity(0.12)).frame(width: 0.7) }
+        .background { NavigationSurface() }
+        .overlay(alignment: .trailing) { Rectangle().fill(.separator).frame(width: 1) }
     }
 
     private func navigationButton(for item: SectionItem) -> some View {
@@ -141,7 +150,7 @@ struct Sidebar: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: item.icon).frame(width: 19)
-                Text(item.title(settings.language)).font(.callout)
+                Text(item.title(settings.language)).font(.callout.weight(selection == item ? .semibold : .regular))
                 Spacer()
             }
             .padding(.horizontal, 11)
@@ -149,7 +158,8 @@ struct Sidebar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(selection == item ? .white : .secondary)
+        .accessibilityAddTraits(selection == item ? .isSelected : [])
+        .foregroundStyle(selection == item ? .white : .primary)
         .background(
             selection == item ? AnyShapeStyle(.blue.opacity(0.78)) : AnyShapeStyle(.clear),
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -311,7 +321,6 @@ struct OverviewView: View {
             WorkflowProgressCard(model: model)
             PrimaryActionCard(model: model)
             DeviceSummaryCard(model: model)
-                .frame(height: 176)
 
             if model.device != nil {
                 HStack(alignment: .top, spacing: InterfaceMetrics.sectionSpacing) {
@@ -381,7 +390,22 @@ struct PrimaryActionCard: View {
 
     var body: some View {
         GlassCard {
-            HStack(spacing: 14) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 18) {
+                    actionSummary.frame(minWidth: 360)
+                    Spacer(minLength: 0)
+                    actionButton.fixedSize()
+                }
+                VStack(alignment: .leading, spacing: 14) {
+                    actionSummary
+                    actionButton
+                }
+            }
+        }
+    }
+
+    private var actionSummary: some View {
+            HStack(alignment: .top, spacing: 14) {
                 Image(systemName: icon)
                     .font(.system(size: 32, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
@@ -393,14 +417,15 @@ struct PrimaryActionCard: View {
                     Text(title).font(.title3.bold())
                     Text(explanation).font(.callout).foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 20)
-                Button(buttonTitle, systemImage: buttonIcon, action: action)
+            }
+    }
+
+    private var actionButton: some View {
+        Button(buttonTitle, systemImage: buttonIcon, action: action)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .tint(accent)
                     .disabled(model.busy || model.downloads.phase.isActive)
-            }
-        }
     }
 
     private var kicker: String {
@@ -985,6 +1010,7 @@ struct SettingsView: View {
     init(model: AppModel) {
         self.model = model
         self._updateChecker = ObservedObject(wrappedValue: model.updateChecker)
+        self._section = State(initialValue: model.cfgutilReady ? .general : .support)
     }
 
     var body: some View {
@@ -1134,6 +1160,9 @@ struct SettingsView: View {
         case .available(let version, _):
             Label(L10n.text("Доступна версия {version}.", "Version {version} is available.", settings.language, replacing: ["version": version]), systemImage: "arrow.down.circle.fill")
                 .font(.caption).foregroundStyle(.blue)
+            Button(L10n.text("Открыть", "Open", settings.language), systemImage: "arrow.up.right.square") {
+                model.openAvailableUpdate()
+            }
         case .failed(let message):
             Text(message).font(.caption).foregroundStyle(.orange).lineLimit(2)
         }

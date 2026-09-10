@@ -24,6 +24,7 @@ fi
 
 CLANG_MODULE_CACHE_PATH="$MODULE_CACHE" SWIFT_MODULE_CACHE_PATH="$MODULE_CACHE" \
 /usr/bin/xcrun swiftc "${SDK_ARGS[@]}" \
+  -target arm64-apple-macos14.0 \
   -parse-as-library \
   -O \
   -framework SwiftUI \
