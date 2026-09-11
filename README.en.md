@@ -28,7 +28,7 @@ A macOS utility that puts a connected Mac into DFU mode with one click, finds an
 - demo mode that does not require a connected Mac.
 - a compact interface with Liquid Glass navigation on macOS 26, quiet content cards, and reduced-transparency support on macOS 14 and later.
 
-Version 1.3 refreshes the visual hierarchy and accessibility. See [design principles and verification](docs/DESIGN.md).
+Version 1.4 puts the connected Mac and one next action at the center of the overview. See [the macOS 27-inspired design notes](docs/DESIGN-macOS27.md).
 
 ## Screenshots
 
@@ -38,12 +38,12 @@ Version 1.3 refreshes the visual hierarchy and accessibility. See [design princi
 
 ## Quick start
 
-1. Download `Target-Mac-DFU-1.3.0.zip` from **Releases**.
+1. Download `Target-Mac-DFU-1.4.0.zip` from **Releases**.
 2. Move `Target Mac DFU.app` to **Applications**.
 3. Install Apple Configurator and Automation Tools if prompted.
 4. Connect the host Mac directly to the correct DFU port on the target Mac with a data-capable USB-C cable.
 5. Open **DFU Mode** and click **Send Mac to DFU**.
-6. After the model and ECID appear, select an IPSW and click **Start Restore**.
+6. After the model and ECID appear, select an IPSW, click **Continue to Restore**, review readiness, and click **Start Restore**.
 7. Do not disconnect the cable or power until the operation finishes.
 
 See the Russian documentation for [installation](docs/INSTALLATION.md), the [user guide](docs/USER_GUIDE.md), and [troubleshooting](docs/TROUBLESHOOTING.md).

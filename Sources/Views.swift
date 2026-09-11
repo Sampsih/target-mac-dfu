@@ -2,11 +2,11 @@ import SwiftUI
 import AppKit
 
 enum InterfaceMetrics {
-    static let cardCorner: CGFloat = 18
+    static let cardCorner: CGFloat = 22
     static let innerCorner: CGFloat = 12
-    static let cardPadding: CGFloat = 16
-    static let pagePadding: CGFloat = 18
-    static let sectionSpacing: CGFloat = 14
+    static let cardPadding: CGFloat = 20
+    static let pagePadding: CGFloat = 24
+    static let sectionSpacing: CGFloat = 18
     static let controlSpacing: CGFloat = 10
     static let sidebarWidth: CGFloat = 216
 }
@@ -15,23 +15,6 @@ struct AppBackdrop: View {
     var body: some View {
         ZStack {
             Color(nsColor: .windowBackgroundColor)
-            LinearGradient(
-                colors: [.blue.opacity(0.025), .clear, .cyan.opacity(0.035)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            RadialGradient(
-                colors: [.blue.opacity(0.11), .clear],
-                center: .topTrailing,
-                startRadius: 0,
-                endRadius: 560
-            )
-            RadialGradient(
-                colors: [.cyan.opacity(0.065), .clear],
-                center: .bottomLeading,
-                startRadius: 0,
-                endRadius: 460
-            )
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
@@ -69,7 +52,7 @@ struct GlassCard<Content: View>: View {
     private var fallbackCard: some View {
         cardContent
             .background(
-                .regularMaterial,
+                Color(nsColor: .controlBackgroundColor),
                 in: RoundedRectangle(cornerRadius: InterfaceMetrics.cardCorner, style: .continuous)
             )
             .overlay(outline)
@@ -107,25 +90,25 @@ struct Sidebar: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            VStack(spacing: 6) {
+            HStack(spacing: 10) {
                 Image(systemName: "laptopcomputer.and.arrow.down")
-                    .font(.system(size: 32, weight: .medium))
-                    .frame(width: 62, height: 62)
-                    .background(.blue.gradient, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                    .foregroundStyle(.white)
-                Text("Target Mac DFU").font(.headline.bold())
-                Text("DFU · IPSW · Restore").font(.caption2).foregroundStyle(.secondary)
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Target Mac DFU").font(.headline)
+                    Text("DFU · IPSW · Restore").font(.caption).foregroundStyle(.secondary)
+                }
             }
-            .padding(.top, 8)
+            .padding(.vertical, 20)
 
             VStack(spacing: 3) {
                 ForEach(workflowItems) { navigationButton(for: $0) }
                 Divider().padding(.vertical, 5)
                 ForEach(utilityItems) { navigationButton(for: $0) }
+                navigationButton(for: .settings)
             }
 
             Spacer()
-            navigationButton(for: .settings)
             Label(
                 settings.demoMode
                     ? L10n.text("Демо-адаптер", "Demo adapter", settings.language)
@@ -159,9 +142,9 @@ struct Sidebar: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selection == item ? .isSelected : [])
-        .foregroundStyle(selection == item ? .white : .primary)
+        .foregroundStyle(.primary)
         .background(
-            selection == item ? AnyShapeStyle(.blue.opacity(0.78)) : AnyShapeStyle(.clear),
+            selection == item ? AnyShapeStyle(Color.primary.opacity(0.09)) : AnyShapeStyle(.clear),
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)
         )
         .overlay {
@@ -228,7 +211,7 @@ struct PageHeader: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.title2.bold())
+                Text(title).font(.largeTitle.weight(.semibold))
                 Text(subtitle).font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
@@ -319,15 +302,27 @@ struct OverviewView: View {
             }
 
             WorkflowProgressCard(model: model)
-            PrimaryActionCard(model: model)
-            DeviceSummaryCard(model: model)
+            GlassCard {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 32) {
+                        DevicePortrait(model: model).frame(minWidth: 280)
+                        PrimaryActionCard(model: model).frame(minWidth: 350)
+                    }
+                    VStack(spacing: 24) {
+                        DevicePortrait(model: model)
+                        PrimaryActionCard(model: model)
+                    }
+                }
+                .padding(12)
+            }
 
             if model.device != nil {
-                HStack(alignment: .top, spacing: InterfaceMetrics.sectionSpacing) {
-                    FirmwareList(model: model, compact: true)
-                    QuickRecoveryCard(model: model).frame(width: 344)
+                FirmwareList(model: model, compact: true)
+                HStack {
+                    Button(L10n.text("Только скачать", "Download Only", model.language), systemImage: "arrow.down.circle") { model.downloadOnly() }
+                        .disabled(model.selectedFirmware == nil || model.downloads.phase.isActive || model.busy)
+                    Spacer()
                 }
-                .frame(minHeight: 302)
             }
         }
     }
@@ -344,7 +339,6 @@ struct WorkflowProgressCard: View {
     }
 
     var body: some View {
-        GlassCard {
             HStack(spacing: 0) {
                 step(1, L10n.text("Подключение", "Connect", model.language), "cable.connector")
                 connector(after: 1)
@@ -353,24 +347,18 @@ struct WorkflowProgressCard: View {
                 step(3, "IPSW", "arrow.down.circle")
                 connector(after: 3)
                 step(4, "Restore", "arrow.triangle.2.circlepath")
-            }
-        }
+            }.padding(.vertical, 6)
     }
 
     private func step(_ number: Int, _ title: String, _ icon: String) -> some View {
         let completed = number < currentStep || (number == 4 && model.sessionPhase == .completed)
         let active = number == currentStep && !completed
-        return VStack(spacing: 5) {
+        return HStack(spacing: 8) {
             Image(systemName: completed ? "checkmark" : icon)
                 .font(.callout.bold())
-                .frame(width: 33, height: 33)
-                .foregroundStyle(completed || active ? .white : .secondary)
-                .background(
-                    completed ? AnyShapeStyle(.green.gradient) :
-                        active ? AnyShapeStyle(.blue.gradient) : AnyShapeStyle(.quaternary),
-                    in: Circle()
-                )
-            Text(title).font(.caption.bold()).foregroundStyle(active ? .primary : .secondary)
+                .frame(width: 26, height: 26)
+                .foregroundStyle(completed ? Color.green : active ? Color.accentColor : Color.secondary)
+            Text(title).font(.callout.weight(active ? .semibold : .regular)).foregroundStyle(active ? .primary : .secondary)
         }
         .frame(minWidth: 88)
         .accessibilityLabel("\(number). \(title)")
@@ -379,9 +367,8 @@ struct WorkflowProgressCard: View {
     private func connector(after number: Int) -> some View {
         Capsule()
             .fill(number < currentStep ? Color.green.opacity(0.65) : Color.secondary.opacity(0.18))
-            .frame(maxWidth: .infinity, minHeight: 3, maxHeight: 3)
-            .padding(.horizontal, 6)
-            .padding(.bottom, 22)
+            .frame(maxWidth: .infinity, minHeight: 1, maxHeight: 1)
+            .padding(.horizontal, 14)
     }
 }
 
@@ -389,34 +376,17 @@ struct PrimaryActionCard: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        GlassCard {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 18) {
-                    actionSummary.frame(minWidth: 360)
-                    Spacer(minLength: 0)
-                    actionButton.fixedSize()
-                }
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 20) {
                     actionSummary
                     actionButton
                 }
-            }
-        }
     }
 
     private var actionSummary: some View {
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 32, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(accent)
-                    .frame(width: 58, height: 58)
-                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(kicker).font(.caption.bold()).foregroundStyle(accent).textCase(.uppercase)
-                    Text(title).font(.title3.bold())
-                    Text(explanation).font(.callout).foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 12) {
+                    Text(kicker).font(.callout.weight(.medium)).foregroundStyle(.secondary)
+                    Text(title).font(.title.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                    Text(explanation).font(.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
     }
 
@@ -471,13 +441,50 @@ struct PrimaryActionCard: View {
         return "checkmark.shield.fill"
     }
     private var accent: Color {
-        model.selectedFirmware == nil ? .blue : .green
+        .accentColor
     }
     private func action() {
         if !model.dfuDetected { model.enterDFU() }
         else if model.device == nil { model.selection = .settings }
         else if model.selectedFirmware == nil { model.selection = .library }
         else { model.selection = .restore; model.runPreflightNow() }
+    }
+}
+
+// A quiet, device-first focal point. The badge reports evidence, not an animation.
+struct DevicePortrait: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Image(systemName: "laptopcomputer")
+                    .resizable().scaledToFit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 200, height: 130)
+                Image(systemName: model.dfuDetected ? "checkmark.circle.fill" : "cable.connector")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(model.dfuDetected ? Color.green : Color.secondary)
+                    .offset(y: -8)
+            }
+            .accessibilityHidden(true)
+            Text(model.deviceName).font(.title3.weight(.semibold))
+                .multilineTextAlignment(.center)
+            Label(model.dfuDetected ? "DFU" : L10n.text("Не подключён", "Disconnected", model.language),
+                  systemImage: model.dfuDetected ? "checkmark.circle.fill" : "circle.dashed")
+                .font(.callout.weight(.medium))
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Color.primary.opacity(0.05), in: Capsule())
+            if let device = model.device {
+                Text("\(device.type)  ·  ECID \(device.maskedECID)")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary).textSelection(.enabled)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -620,11 +627,12 @@ struct FirmwareRow: View {
             }
             .padding(.horizontal, 10).frame(height: 44)
             .foregroundStyle(selected ? .white : .primary)
-            .background(selected ? AnyShapeStyle(.blue.gradient) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 12))
+            .background(selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(model.downloads.phase.isActive)
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityLabel("macOS \(firmware.version), build \(firmware.build), \(firmware.sizeText)")
     }
 }
