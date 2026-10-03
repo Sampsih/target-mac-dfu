@@ -1,9 +1,11 @@
 import Foundation
 import AppKit
+import Combine
 import UniformTypeIdentifiers
 
 @MainActor
 final class AppModel: ObservableObject {
+    static let shared = AppModel()
     @Published var selection: SectionItem = .overview
     @Published var device: DeviceInfo?
     @Published var deviceName = "Подключённый Mac"
@@ -30,34 +32,34 @@ final class AppModel: ObservableObject {
     let downloads = DownloadManager.shared
     let history = HistoryStore.shared
     let updateChecker = UpdateChecker()
+    let operations = OperationCoordinator()
 
     private let backend: BackendServing
     private var pendingJob: (kind: RecoveryKind, device: DeviceInfo, firmware: Firmware)?
     private var monitorTask: Task<Void, Never>?
+    private var downloadObservation: AnyCancellable?
 
-    init(backend: BackendServing = BackendClient()) {
+    init(backend: BackendServing = BackendClient(), startMonitoring: Bool = true) {
         self.backend = backend
         self.backend.demoMode = settings.demoMode
         downloads.onCompletion = { [weak self] result in
-            Task { @MainActor in self?.downloadFinished(result) }
+            self?.downloadFinished(result)
         }
+        downloadObservation = downloads.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
         if downloads.phase == .paused {
             status = "Загрузка приостановлена"
             detail = "Можно продолжить загрузку с сохранённого места"
         }
         updateCacheSize()
+        guard startMonitoring else { return }
         monitorTask = Task { [weak self] in
-            guard let self else { return }
-            await self.checkToolchain()
-            await self.refreshDevice(silent: true)
-            if self.settings.automaticUpdateChecks {
-                await self.updateChecker.check(currentVersion: self.currentVersion)
-            }
+            await self?.checkToolchain()
+            await self?.refreshDevice(silent: true)
+            await self?.checkUpdatesIfEnabled()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
-                if !self.busy && !self.preflightRunning && !self.downloads.phase.isActive {
-                    await self.refreshDevice(silent: true)
-                }
+                guard !Task.isCancelled else { return }
+                await self?.refreshDevice(silent: true)
             }
         }
     }
@@ -67,11 +69,41 @@ final class AppModel: ObservableObject {
     var language: AppLanguage { settings.language }
     var isRecoveryRunning: Bool { sessionPhase == .recovering }
     var cfgutilReady: Bool { toolStatus?.cfgutilInstalled == true }
+    var controlsLocked: Bool { busy || preflightRunning || downloads.phase.isActive || pendingJob != nil }
+    var workflowStep: Int {
+        WorkflowState.step(phase: sessionPhase, dfuConfirmed: dfuDetected, identified: device != nil,
+            firmwareReady: selectedFirmware.map { isDownloaded($0) } == true && !downloads.phase.isActive)
+    }
     var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.1"
     }
     var preflightReady: Bool {
         !preflightChecks.isEmpty && !preflightChecks.contains(where: \.blocksRestore)
+    }
+
+    private func checkUpdatesIfEnabled() async {
+        if settings.automaticUpdateChecks { await updateChecker.check(currentVersion: currentVersion) }
+    }
+
+    private func beginOperation(_ operation: AppOperation) -> Bool {
+        guard !controlsLocked, operations.begin(operation) else { return false }
+        busy = true
+        preflightRunning = operation == .preflight
+        return true
+    }
+
+    private func finishOperation() {
+        operations.finish()
+        busy = false
+        preflightRunning = false
+    }
+
+    private func errorMessage(_ error: Error) -> String {
+        let backendError = error as NSError
+        if backendError.domain == "TargetMacDFU.Backend" && backendError.code == 20 {
+            return L10n.text("Оставьте подключённым только один Target Mac и проверьте DFU снова.", "Leave only one target Mac connected and check DFU again.", language)
+        }
+        return error.localizedDescription
     }
 
     func checkToolchain() async {
@@ -104,9 +136,11 @@ final class AppModel: ObservableObject {
     }
 
     func checkToolchainNow() {
+        guard beginOperation(.checking) else { return }
         Task {
+            defer { finishOperation() }
             await checkToolchain()
-            if cfgutilReady { await refreshDevice(silent: false) }
+            if cfgutilReady { await refreshDevice(silent: false, withinOperation: true) }
         }
     }
 
@@ -155,7 +189,13 @@ final class AppModel: ObservableObject {
         NSWorkspace.shared.openApplication(at: finder, configuration: .init(), completionHandler: nil)
     }
 
-    func refreshDevice(silent: Bool = false) async {
+    func refreshDevice(silent: Bool = false, withinOperation: Bool = false) async {
+        // A monitoring response must never overwrite an active Restore/DFU state.
+        if !withinOperation {
+            if silent && (sessionPhase == .completed || sessionPhase == .recoveryNeeded) { return }
+            guard beginOperation(.checking) else { return }
+        }
+        defer { if !withinOperation { finishOperation() } }
         if !silent {
             status = L10n.text("Поиск устройства", "Detecting device", language)
             sessionPhase = .detecting
@@ -166,6 +206,7 @@ final class AppModel: ObservableObject {
             let found = try JSONDecoder().decode(DeviceInfo.self, from: Data(output.utf8))
             let changed = found != device
             device = found
+            if changed { preflightChecks = [] }
             dfuDetected = true
             sessionPhase = .connected
             status = "DFU Mode"
@@ -178,6 +219,18 @@ final class AppModel: ObservableObject {
                 await loadFirmwares()
             }
         } catch {
+            if (error as NSError).code == 20 {
+                device = nil
+                preflightChecks = []
+                dfuDetected = false
+                firmwares = []
+                selectedFirmware = nil
+                sessionPhase = .failed
+                status = L10n.text("Подключено несколько Mac", "Multiple Macs connected", language)
+                detail = L10n.text("Оставьте подключённым только один Target Mac и проверьте DFU снова.", "Leave only one target Mac connected and check DFU again.", language)
+                if !silent { lastError = detail }
+                return
+            }
             if isRecoveryRunning {
                 sessionPhase = .recoveryNeeded
                 status = L10n.text("Соединение потеряно", "Connection lost", language)
@@ -206,6 +259,7 @@ final class AppModel: ObservableObject {
             }
             device = nil
             dfuDetected = false
+            preflightChecks = []
             deviceName = L10n.text("Подключённый Mac", "Connected Mac", language)
             firmwares = []
             selectedFirmware = nil
@@ -258,18 +312,16 @@ final class AppModel: ObservableObject {
     }
 
     func refreshFirmwares() {
-        guard !busy else { return }
-        busy = true
+        guard beginOperation(.checking) else { return }
         Task {
+            defer { finishOperation() }
             await loadFirmwares()
-            busy = false
         }
     }
 
     func enterDFU() {
-        guard !busy else { return }
+        guard beginOperation(.enteringDFU) else { return }
         selection = .dfu
-        busy = true
         sessionPhase = .enteringDFU
         dfuStage = L10n.text("Проверка подключения", "Checking connection", language)
         status = L10n.text("Отправка команды DFU", "Sending DFU command", language)
@@ -279,19 +331,23 @@ final class AppModel: ObservableObject {
             language
         )
         backend.demoMode = settings.demoMode
-        Task {
+        Task { [self] in
+            defer { finishOperation() }
             do {
                 _ = try await backend.run(["dfu"]) { [weak self] chunk in
                     let message = chunk.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !message.isEmpty else { return }
                     let stage = Self.stage(in: message) ?? message
                     Task { @MainActor in
+                        guard self?.sessionPhase == .enteringDFU else { return }
                         self?.dfuStage = stage
                         self?.detail = stage
                     }
                 }
-                dfuDetected = true
-                await refreshDevice(silent: true)
+                await refreshDevice(silent: true, withinOperation: true)
+                guard dfuDetected else {
+                    throw AppError.message(L10n.text("DFU пока не подтверждён. Проверьте подключение и повторите проверку.", "DFU is not confirmed yet. Check the connection and try again.", language))
+                }
                 sessionPhase = .connected
                 status = "DFU Mode"
                 dfuStage = L10n.text("DFU подтверждён", "DFU confirmed", language)
@@ -313,23 +369,22 @@ final class AppModel: ObservableObject {
                     "Check the direct connection, DFU port, and cable. The manual sequence is shown below.",
                     language
                 )
-                lastError = error.localizedDescription
+                lastError = errorMessage(error)
+                if (error as NSError).code == 20 { detail = errorMessage(error) }
             }
-            busy = false
         }
     }
 
     func checkDFUPresenceNow() {
-        guard !busy else { return }
-        busy = true
+        guard beginOperation(.checking) else { return }
         Task {
-            await refreshDevice(silent: false)
-            busy = false
+            defer { finishOperation() }
+            await refreshDevice(silent: false, withinOperation: true)
         }
     }
 
     func downloadOnly() {
-        guard let firmware = selectedFirmware else { return }
+        guard !controlsLocked, let firmware = selectedFirmware else { return }
         pendingJob = nil
         guard hasDownloadSpace(for: firmware) else { return }
         sessionPhase = .downloading
@@ -344,10 +399,21 @@ final class AppModel: ObservableObject {
         selection = .downloads
     }
 
+    func cancelDownload() {
+        guard !busy else { return }
+        pendingJob = nil
+        downloads.cancel()
+        sessionPhase = dfuDetected ? .connected : .disconnected
+        status = L10n.text("Загрузка отменена", "Download canceled", language)
+        detail = L10n.text("Restore не запущен.", "Restore has not started.", language)
+    }
+
     func requestRecovery() {
-        guard !preflightRunning, let device, let firmware = selectedFirmware else { return }
+        guard dfuDetected, let device, let firmware = selectedFirmware, beginOperation(.preflight) else { return }
         Task {
+            defer { finishOperation() }
             let ready = await performPreflight(device: device, firmware: firmware)
+            preflightRunning = false
             guard ready else {
                 selection = .restore
                 lastError = L10n.text(
@@ -364,7 +430,8 @@ final class AppModel: ObservableObject {
             let candidate = localURL(for: firmware)
             if FileManager.default.fileExists(atPath: candidate.path) {
                 downloadedPath = candidate.path
-                await runRecovery(kind: kind, device: device, firmware: firmware, file: candidate)
+                pendingJob = nil
+                await runRecovery(kind: kind, device: device, firmware: firmware, file: candidate, ownsGate: true)
             } else {
                 guard hasDownloadSpace(for: firmware) else { pendingJob = nil; return }
                 sessionPhase = .downloading
@@ -377,13 +444,14 @@ final class AppModel: ObservableObject {
     }
 
     func runPreflightNow() {
-        guard let device, let firmware = selectedFirmware, !preflightRunning else { return }
-        Task { _ = await performPreflight(device: device, firmware: firmware) }
+        guard dfuDetected, let device, let firmware = selectedFirmware, beginOperation(.preflight) else { return }
+        Task {
+            defer { finishOperation() }
+            _ = await performPreflight(device: device, firmware: firmware)
+        }
     }
 
     private func performPreflight(device: DeviceInfo, firmware: Firmware) async -> Bool {
-        preflightRunning = true
-        defer { preflightRunning = false }
         var checks: [PreflightCheck] = []
 
         await checkToolchain()
@@ -395,11 +463,19 @@ final class AppModel: ObservableObject {
                 ? L10n.text("cfgutil готов к Restore.", "cfgutil is ready for Restore.", language)
                 : L10n.text("Установите Automation Tools для Apple Configurator.", "Install Automation Tools for Apple Configurator.", language)
         ))
+        let currentDevice: DeviceInfo?
+        do {
+            let output = try await backend.run(["detect"], onOutput: nil)
+            currentDevice = try JSONDecoder().decode(DeviceInfo.self, from: Data(output.utf8))
+        } catch { currentDevice = nil }
+        let matchesTarget = currentDevice?.ecid == device.ecid && currentDevice?.type == device.type && currentDevice?.mode == "DFU"
         checks.append(PreflightCheck(
             id: "device",
-            state: self.device?.ecid == device.ecid && self.device?.type == device.type ? .passed : .failed,
+            state: matchesTarget ? .passed : .failed,
             title: L10n.text("Target Mac", "Target Mac", language),
-            detail: "\(device.type) · ECID \(device.maskedECID) · \(device.mode)"
+            detail: matchesTarget
+                ? "\(device.type) · ECID \(device.maskedECID) · DFU"
+                : L10n.text("DFU и выбранный ECID не подтверждены. Проверьте подключение и выберите Mac заново.", "DFU and the selected ECID could not be confirmed. Check the connection and select the Mac again.", language)
         ))
         checks.append(PreflightCheck(
             id: "firmware",
@@ -438,7 +514,7 @@ final class AppModel: ObservableObject {
         let required: Int64 = 32_000_000_000
         checks.append(PreflightCheck(
             id: "storage",
-            state: available == nil || available! >= required ? .passed : .failed,
+            state: available.map { $0 >= required ? .passed : .failed } ?? .warning,
             title: L10n.text("Свободное место", "Free disk space", language),
             detail: available.map {
                 "\(ByteCountFormatter.string(fromByteCount: $0, countStyle: .file)) " +
@@ -493,6 +569,7 @@ final class AppModel: ObservableObject {
     }
 
     func importIPSW() {
+        guard !controlsLocked else { return }
         guard let firmware = selectedFirmware else {
             lastError = L10n.text("Сначала выберите версию IPSW в библиотеке.", "Select an IPSW version in the library first.", language)
             return
@@ -503,10 +580,12 @@ final class AppModel: ObservableObject {
         panel.canChooseDirectories = false
         panel.title = L10n.text("Выберите IPSW", "Choose IPSW", language)
         guard panel.runModal() == .OK, let source = panel.url else { return }
+        guard beginOperation(.importingIPSW) else { return }
         status = L10n.text("Проверка IPSW", "Validating IPSW", language)
         sessionPhase = .validating
         let expectedProductType = device?.type
         Task {
+            defer { finishOperation() }
             do {
                 _ = try await Task.detached {
                     try IPSWValidator.validate(
@@ -543,8 +622,8 @@ final class AppModel: ObservableObject {
     func revealDownloads() { NSWorkspace.shared.activateFileViewerSelecting([settings.downloadDirectory]) }
 
     func clearCache() {
-        guard !downloads.phase.isActive else {
-            lastError = L10n.text("Остановите текущую загрузку перед очисткой кэша.", "Stop the active download before clearing cache.", language)
+        guard !controlsLocked else {
+            lastError = L10n.text("Дождитесь завершения операции перед очисткой кэша.", "Wait for the operation to finish before clearing cache.", language)
             return
         }
         for file in CacheInspector.ipswFiles(in: settings.downloadDirectory) {
@@ -557,6 +636,7 @@ final class AppModel: ObservableObject {
     func updateCacheSize() { cacheSize = CacheInspector.size(in: settings.downloadDirectory) }
 
     func exportSupportBundle() {
+        guard !controlsLocked else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Target-Mac-DFU-Support-\(DateFormatter.bundleDate.string(from: Date())).zip"
         panel.allowedContentTypes = [.zip]
@@ -603,7 +683,14 @@ final class AppModel: ObservableObject {
             updateCacheSize()
             if let job = pendingJob {
                 pendingJob = nil
-                Task { await runRecovery(kind: job.kind, device: job.device, firmware: job.firmware, file: url) }
+                guard beginOperation(.restoring) else {
+                    lastError = L10n.text("Restore не запущен: дождитесь завершения текущей операции и повторите проверку готовности.", "Restore has not started: wait for the current operation to finish and check readiness again.", language)
+                    return
+                }
+                Task {
+                    defer { finishOperation() }
+                    await runRecovery(kind: job.kind, device: job.device, firmware: job.firmware, file: url, ownsGate: true)
+                }
             }
         case .failure(let error):
             sessionPhase = .failed
@@ -614,9 +701,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func runRecovery(kind: RecoveryKind, device: DeviceInfo, firmware: Firmware, file: URL) async {
-        guard !busy else { return }
-        busy = true
+    private func runRecovery(kind: RecoveryKind, device: DeviceInfo, firmware: Firmware, file: URL, ownsGate: Bool = false) async {
+        if ownsGate {
+            operations.transition(to: .restoring)
+        } else {
+            guard beginOperation(.restoring) else { return }
+        }
+        defer { if !ownsGate { finishOperation() } }
+        selection = .restore
         sessionPhase = .validating
         status = L10n.text("Проверка IPSW", "Validating IPSW", language)
         detail = L10n.text("Размер и контрольная сумма", "File size and checksum", language)
@@ -635,8 +727,8 @@ final class AppModel: ObservableObject {
             }
             let detectOutput = try await backend.run(["detect"], onOutput: nil)
             let current = try JSONDecoder().decode(DeviceInfo.self, from: Data(detectOutput.utf8))
-            guard current.ecid == device.ecid, current.type == device.type else {
-                throw AppError.message("Подключённое устройство изменилось. Операция остановлена до повторного выбора.")
+            guard current.ecid == device.ecid, current.type == device.type, current.mode == "DFU" else {
+                throw AppError.message(L10n.text("Подключённое устройство изменилось. Выберите Mac заново перед Restore.", "The connected device changed. Select the Mac again before Restore.", language))
             }
             sessionPhase = .recovering
             recoveryProgress = 0
@@ -650,6 +742,7 @@ final class AppModel: ObservableObject {
                     let stage = Self.stage(in: chunk)
                     guard percent != nil || stage != nil else { return }
                     Task { @MainActor in
+                        guard self?.isRecoveryRunning == true else { return }
                         if let percent { self?.recoveryProgress = percent }
                         if let stage {
                             self?.recoveryStage = stage
@@ -659,24 +752,32 @@ final class AppModel: ObservableObject {
                 }
                 recoveryProgress = 1
                 sessionPhase = .completed
+                dfuDetected = false
                 status = L10n.text("Операция завершена", "Operation complete", language)
                 recoveryStage = L10n.text("Restore завершён", "Restore complete", language)
-                detail = L10n.text("Target Mac перезагрузится в Ассистент настройки.", "Target Mac will restart into Setup Assistant.", language)
+                detail = Self.completionDetail(for: device.type, language: language)
                 history.finish(id: recordID, result: "success", detail: detail)
             } catch {
                 sessionPhase = .recoveryNeeded
                 status = L10n.text("Требуется восстановление", "Recovery needed", language)
-                detail = error.localizedDescription
-                history.finish(id: recordID, result: "failed", detail: error.localizedDescription)
+                detail = errorMessage(error)
+                history.finish(id: recordID, result: "failed", detail: detail)
                 throw error
             }
         } catch {
-            lastError = error.localizedDescription
+            lastError = errorMessage(error)
             if sessionPhase != .recoveryNeeded { sessionPhase = .failed }
             status = L10n.text("Операция остановлена", "Operation stopped", language)
-            detail = error.localizedDescription
+            detail = errorMessage(error)
         }
-        busy = false
+    }
+
+    static func completionDetail(for productType: String, language: AppLanguage) -> String {
+        // Pre-Apple-silicon identifiers supported by this app are Intel Macs with T2.
+        if DeviceInfo.isT2(productType) {
+            return L10n.text("Restore завершён. На Mac с T2 может открыться интернет-восстановление: подключитесь к сети и установите macOS. Если появится запрос Apple Account, используйте учётную запись владельца.", "Restore is complete. A T2 Mac may start Internet Recovery: connect to a network and install macOS. If Apple Account is requested, use the owner's account.", language)
+        }
+        return L10n.text("Restore завершён. Следуйте инструкциям на экране Target Mac. Если появится запрос Apple Account, используйте учётную запись владельца, затем пройдите Ассистент настройки.", "Restore is complete. Follow the target Mac's onscreen instructions. If Apple Account is requested, use the owner's account, then complete Setup Assistant.", language)
     }
 
     private func confirm(kind: RecoveryKind, device: DeviceInfo, firmware: Firmware) -> Bool {

@@ -13,7 +13,7 @@ final class DownloadManager: NSObject, ObservableObject {
     @Published private(set) var activeFirmware: Firmware?
     @Published private(set) var completedURL: URL?
 
-    var onCompletion: ((Result<URL, Error>) -> Void)?
+    var onCompletion: (@MainActor (Result<URL, Error>) -> Void)?
 
     private var session: URLSession!
     private var task: URLSessionDownloadTask?

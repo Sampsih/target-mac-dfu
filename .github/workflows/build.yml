@@ -11,7 +11,12 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15
+    name: Build (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, xcode-27]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
       - name: Run tests
@@ -23,5 +28,5 @@ jobs:
       - name: Upload unsigned artifact
         uses: actions/upload-artifact@v7
         with:
-          name: Target-Mac-DFU-${{ github.sha }}
+          name: Target-Mac-DFU-${{ matrix.runner }}-${{ github.sha }}
           path: dist/Target-Mac-DFU-*.zip

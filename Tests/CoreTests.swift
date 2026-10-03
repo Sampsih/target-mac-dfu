@@ -8,7 +8,57 @@ struct CoreTests {
         try expect(!UpdateChecker.isNewer("1.1.0", than: "1.1.0"), "equal semantic versions")
         try expect(!UpdateChecker.isNewer("1.0.9", than: "1.1.0"), "semantic version downgrade")
         try expect(AppLanguage.allCases.count == 5, "five interface languages")
+        let activity = TestActivity()
+        let operations = OperationCoordinator(activity: activity)
+        try expect(operations.begin(.preflight), "preflight acquires the gate synchronously")
+        try expect(!operations.begin(.preflight), "duplicate preflight is blocked")
+        try expect(!operations.begin(.enteringDFU), "overlapping DFU is blocked")
+        try expect(!operations.protectsTermination && activity.started == 0, "preflight does not hold host activity")
+        operations.transition(to: .restoring)
+        try expect(operations.protectsTermination && activity.started == 1, "Restore protects quit and host sleep")
+        operations.transition(to: .restoring)
+        try expect(activity.started == 1, "repeated Restore transition does not leak activity tokens")
+        operations.finish()
+        operations.finish()
+        try expect(activity.ended == 1 && operations.current == nil, "success or failure releases activity exactly once")
+        try expect(operations.begin(.enteringDFU) && operations.protectsTermination, "DFU protects termination")
+        operations.finish()
+        try expect(activity.started == 2 && activity.ended == 2, "DFU cleanup releases host activity")
+        try expect(operations.begin(.importingIPSW), "gate is reusable after failure cleanup")
+        operations.finish()
+
+        for model in ["MacBookPro15,1", "MacBookPro16,4", "MacBookAir9,1", "Macmini8,1", "iMac20,2", "iMacPro1,1", "MacPro7,1"] {
+            try expect(DeviceInfo.isT2(model), "\(model) uses T2 completion guidance")
+        }
+        for model in ["Mac14,7", "MacBookPro17,1", "MacBookPro18,3", "MacBookAir10,1", "Macmini9,1", "iMac21,1"] {
+            try expect(!DeviceInfo.isT2(model), "\(model) is not misclassified as T2")
+        }
+        try expect(WorkflowState.step(phase: .disconnected, dfuConfirmed: false, identified: false, firmwareReady: false) == 1, "connection step")
+        try expect(WorkflowState.step(phase: .enteringDFU, dfuConfirmed: false, identified: false, firmwareReady: false) == 2, "DFU step is active")
+        try expect(WorkflowState.step(phase: .connected, dfuConfirmed: true, identified: false, firmwareReady: false) == 2, "DFU without identity is not Restore-ready")
+        try expect(WorkflowState.step(phase: .connected, dfuConfirmed: true, identified: true, firmwareReady: false) == 3, "firmware step")
+        try expect(WorkflowState.step(phase: .connected, dfuConfirmed: true, identified: true, firmwareReady: true) == 4, "ready for Restore step")
+        try expect(WorkflowState.step(phase: .completed, dfuConfirmed: false, identified: false, firmwareReady: false) == 4, "completed step stays visible")
         for language in [AppLanguage.french, .german, .spanish] {
+            let safetyKeys = [
+                "Wait for the operation to finish",
+                "DFU or Restore is running. The app will stay open. Keep cable and power connected and leave the host Mac lid open.",
+                "Multiple Macs connected",
+                "Leave only one target Mac connected and check DFU again.",
+                "DFU is not confirmed yet. Check the connection and try again.",
+                "Wait for the operation to finish before clearing cache.",
+                "Download canceled",
+                "Restore has not started.",
+                "Restore has not started: wait for the current operation to finish and check readiness again.",
+                "The connected device changed. Select the Mac again before Restore.",
+                "DFU and the selected ECID could not be confirmed. Check the connection and select the Mac again.",
+                "Restore is complete. A T2 Mac may start Internet Recovery: connect to a network and install macOS. If Apple Account is requested, use the owner's account.",
+                "Restore is complete. Follow the target Mac's onscreen instructions. If Apple Account is requested, use the owner's account, then complete Setup Assistant.",
+                "All data on the target Mac will be erased. After Restore, follow its onscreen instructions; a T2 Mac may need macOS installation through Internet Recovery.",
+                "Apple Instructions",
+                "Step 2 of 4",
+            ]
+            try expect(LocalizationCatalog.coverage(for: language, keys: safetyKeys) == 1, "all new safety messages are translated for \(language.rawValue)")
             let settings = L10n.text("Настройки", "Settings", language)
             try expect(settings != "Settings", "\(language.rawValue) settings translation")
             let formatted = L10n.text(
@@ -99,6 +149,14 @@ struct CoreTests {
             throw TestFailure("\(executable) failed with \(process.terminationStatus)")
         }
     }
+}
+
+@MainActor
+private final class TestActivity: ActivityHolding {
+    var started = 0
+    var ended = 0
+    func begin() -> NSObjectProtocol { started += 1; return NSObject() }
+    func end(_ token: NSObjectProtocol) { ended += 1 }
 }
 
 private struct TestFailure: LocalizedError {

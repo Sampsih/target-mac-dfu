@@ -64,9 +64,22 @@ struct DeviceInfo: Codable, Hashable, Identifiable {
     let mode: String
 
     var id: String { ecid }
+    static func isT2(_ productType: String) -> Bool {
+        let family = productType.split(separator: ",").first.map(String.init) ?? ""
+        return ["MacBookPro15", "MacBookPro16", "MacBookAir8", "MacBookAir9", "Macmini8", "iMac20", "iMacPro1", "MacPro7"].contains(family)
+    }
     var maskedECID: String {
         guard ecid.count > 6 else { return ecid }
         return "••••" + ecid.suffix(6)
+    }
+}
+
+enum WorkflowState {
+    static func step(phase: SessionPhase, dfuConfirmed: Bool, identified: Bool, firmwareReady: Bool) -> Int {
+        if phase == .recovering || phase == .completed || phase == .recoveryNeeded { return 4 }
+        if phase == .enteringDFU || (dfuConfirmed && !identified) { return 2 }
+        guard dfuConfirmed && identified else { return 1 }
+        return firmwareReady ? 4 : 3
     }
 }
 

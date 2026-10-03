@@ -1,6 +1,7 @@
 #!/bin/zsh
 set -u
 setopt PIPE_FAIL
+BACKEND_RESOURCES="${0:A:h}"
 
 APP_SUPPORT="$HOME/Library/Application Support/Target Mac DFU"
 TOOL="$APP_SUPPORT/macvdmtool"
@@ -90,69 +91,26 @@ end run
 AS
 }
 
-parse_cfgutil(){
-  /usr/bin/awk '
-    BEGIN { type=""; ecid="" }
-    {
-      line=$0
-      if (type=="" && match(line, /(Mac|MacBookPro|MacBookAir|Macmini|iMac|iMacPro|MacPro)[0-9]+,[0-9]+/)) type=substr(line, RSTART, RLENGTH)
-      if (ecid=="" && match(line, /ECID:[[:space:]]*(0x)?[0-9A-Fa-f]+/)) {
-        value=substr(line, RSTART, RLENGTH); sub(/^ECID:[[:space:]]*/, "", value); ecid=value
-      }
-      if (type!="" && ecid!="") { print type "\t" ecid; exit }
-    }
-  '
+usb_snapshot(){
+  # ioreg contains NSData values, which plutil cannot convert to JSON.
+  /usr/sbin/ioreg -a -p IOUSB -l -w 0 >"$1" 2>/dev/null
 }
 
-parse_cfgutil_json_file(){
-  /usr/bin/osascript -l JavaScript - "$1" <<'JS'
-ObjC.import('Foundation');
-function text(v){ return v === null || v === undefined ? '' : String(v); }
-function value(o,names){ for (const n of names) if (o && o[n] !== undefined) return text(o[n]); return ''; }
-function walk(v){
-  if (!v || typeof v !== 'object') return null;
-  if (!Array.isArray(v)) {
-    const type=value(v,['deviceType','DeviceType','device_type','ProductType','productType']);
-    const ecid=value(v,['ECID','ecid','EcID']);
-    if (/^(Mac|MacBookPro|MacBookAir|Macmini|iMac|iMacPro|MacPro)[0-9]+,[0-9]+$/.test(type) && ecid) return [type,ecid];
-  }
-  for (const k in v) { const found=walk(v[k]); if (found) return found; }
-  return null;
-}
-function run(a){
-  const data=$.NSData.dataWithContentsOfFile(a[0]); if (!data) return '';
-  const source=ObjC.unwrap($.NSString.alloc.initWithDataEncoding(data,$.NSUTF8StringEncoding));
-  let root; try { root=JSON.parse(source); } catch(e) { return ''; }
-  const found=walk(root); return found ? found[0]+'\t'+found[1] : '';
-}
-JS
-}
+json_true(){ print -r -- "$1" | /usr/bin/plutil -extract "$2" raw -o - - 2>/dev/null | /usr/bin/grep -qx true; }
 
 dfu_presence(){
   if [[ "${TARGET_MAC_DFU_FAKE:-0}" == 1 ]]; then
     print -r -- '{"detected":true,"via":"demo"}'
     return 0
   fi
-  local cfg out usb
-  cfg=$(find_cfg 2>/dev/null || true)
-  if [[ -n "$cfg" ]]; then
-    out=$("$cfg" list 2>&1 || true)
-    if [[ -n "$(print -r -- "$out" | parse_cfgutil)" ]]; then
-      print -r -- '{"detected":true,"via":"cfgutil"}'
-      return 0
-    fi
-  fi
-  usb=$(/usr/sbin/ioreg -p IOUSB -l -w 0 2>/dev/null || true)
-  if print -r -- "$usb" | /usr/bin/grep -Eiq 'Mac DFU Mode|Apple Mobile Device.*DFU|DFU Mode|AppleDFU'; then
-    print -r -- '{"detected":true,"via":"usb"}'
-    return 0
-  fi
-  usb=$(/usr/sbin/system_profiler SPUSBDataType 2>/dev/null || true)
-  if print -r -- "$usb" | /usr/bin/grep -Eiq 'Mac DFU Mode|Apple Mobile Device.*DFU|DFU Mode'; then
-    print -r -- '{"detected":true,"via":"usb"}'
-  else
-    print -r -- '{"detected":false,"via":"none"}'
-  fi
+  local result tmp
+  tmp=$(/usr/bin/mktemp "$APP_SUPPORT/usb.XXXXXX.json") || return 6
+  usb_snapshot "$tmp" || true
+  result=$(/usr/bin/osascript -l JavaScript "$BACKEND_RESOURCES/device-parser.js" presence '' "$tmp")
+  /bin/rm -f "$tmp"
+  [[ -n "$result" ]] || { fail 'Не удалось прочитать состояние USB.'; return 6; }
+  if json_true "$result" ambiguous; then fail 'Подключено несколько Mac в DFU. Оставьте только один Target Mac.'; return 20; fi
+  print -r -- "$result"
 }
 
 detect(){
@@ -160,30 +118,35 @@ detect(){
     print -r -- '{"type":"Mac14,7","ecid":"0xDEMO123456","mode":"DFU"}'
     return 0
   fi
-  local cfg out row type ecid tmp
+  local cfg result presence tmp usb text
   cfg=$(find_cfg) || { fail 'cfgutil не найден. Установите Apple Configurator и Automation Tools.'; return 5; }
-  out=$("$cfg" list 2>&1 || true)
-  log "cfgutil list output:\n$out"
-  row=$(print -r -- "$out" | parse_cfgutil)
-  if [[ -z "$row" ]]; then
-    tmp=$(/usr/bin/mktemp "$APP_SUPPORT/cfgutil.XXXXXX.json") || return 6
-    "$cfg" --foreach get deviceType ECID --format JSON >"$tmp" 2>>"$LOG" || true
-    row=$(parse_cfgutil_json_file "$tmp" 2>/dev/null || true)
-    /bin/rm -f "$tmp"
+  tmp=$(/usr/bin/mktemp -d "$APP_SUPPORT/detect.XXXXXX") || return 6
+  usb="$tmp/usb.json"; text="$tmp/list.txt"
+  usb_snapshot "$usb" || true
+  "$cfg" --timeout 2 --format JSON list >"$tmp/list.json" 2>>"$LOG" || true
+  result=$(/usr/bin/osascript -l JavaScript "$BACKEND_RESOURCES/device-parser.js" detect "$tmp/list.json" "$usb")
+  presence=$(/usr/bin/osascript -l JavaScript "$BACKEND_RESOURCES/device-parser.js" presence '' "$usb")
+  if ! json_true "$result" detected && ! json_true "$result" ambiguous && { json_true "$result" identified || json_true "$presence" detected; }; then
+    "$cfg" --timeout 2 list >"$text" 2>>"$LOG" || true
+    "$cfg" --timeout 2 --format JSON --foreach get deviceType ECID bootedState >"$tmp/get.json" 2>>"$LOG" || true
+    result=$(/usr/bin/osascript -l JavaScript "$BACKEND_RESOURCES/device-parser.js" detect "$tmp/get.json" "$usb" "$text")
   fi
-  [[ -n "$row" ]] || return 6
-  type=${row%%$'\t'*}
-  ecid=${row#*$'\t'}
-  type=$(print -r -- "$type" | json_escape)
-  ecid=$(print -r -- "$ecid" | json_escape)
-  print -r -- "{\"type\":\"$type\",\"ecid\":\"$ecid\",\"mode\":\"DFU\"}"
+  /bin/rm -f "$tmp/list.json" "$tmp/get.json" "$usb" "$text"
+  /bin/rmdir "$tmp"
+  [[ -n "$result" ]] || { fail 'Не удалось прочитать состояние устройства.'; return 6; }
+  if json_true "$result" ambiguous; then fail 'Подключено несколько Mac или ECID не совпадает с USB. Оставьте только один Target Mac.'; return 20; fi
+  json_true "$result" detected || return 6
+  print -r -- "$result"
 }
 
 wait_for_dfu(){
-  local timeout=${1:-60} elapsed=0 result presence
+  local timeout=${1:-60} elapsed=0 result presence rc
   while (( elapsed < timeout )); do
-    if result=$(detect 2>/dev/null); then print -r -- "$result"; return 0; fi
-    presence=$(dfu_presence 2>/dev/null || true)
+    result=$(detect 2>/dev/null); rc=$?
+    if (( rc == 0 )); then print -r -- "$result"; return 0; fi
+    if (( rc == 20 )); then fail 'Оставьте подключённым только один Target Mac.'; return 20; fi
+    presence=$(dfu_presence 2>/dev/null); rc=$?
+    if (( rc == 20 )); then fail 'Оставьте подключённым только один Target Mac.'; return 20; fi
     if print -r -- "$presence" | /usr/bin/grep -q '"detected":true'; then
       print -r -- "$presence"
       return 0
@@ -206,13 +169,17 @@ enter_dfu(){
   fi
   [[ "$(/usr/bin/uname -m)" == arm64 ]] || { fail 'Кнопка автоматического DFU работает только на Host Mac с Apple silicon.'; return 2; }
   stage 'Проверка Host Mac и компонентов'
-  ensure_tool || return $?
   local output rc presence
-  presence=$(dfu_presence 2>/dev/null || true)
+  output=$(detect 2>/dev/null); rc=$?
+  if (( rc == 0 )); then stage 'Mac уже находится в DFU'; return 0; fi
+  if (( rc == 20 )); then fail 'Оставьте подключённым только один Target Mac.'; return 20; fi
+  presence=$(dfu_presence 2>/dev/null); rc=$?
+  if (( rc == 20 )); then fail 'Оставьте подключённым только один Target Mac.'; return 20; fi
   if print -r -- "$presence" | /usr/bin/grep -q '"detected":true'; then
     stage 'Mac уже находится в DFU'
     return 0
   fi
+  ensure_tool || return $?
   stage 'Отправка аппаратной команды DFU'
   output=$(priv_status dfu 2>&1) || { fail "$output"; return 9; }
   log "macvdmtool dfu output:\n$output"
@@ -220,7 +187,9 @@ enter_dfu(){
   [[ -n "$rc" ]] || rc=1
   (( rc != 0 && rc != 255 )) && log "macvdmtool returned $rc; verifying actual DFU state"
   stage 'Ожидание ответа Target Mac'
-  if ! wait_for_dfu 25 >/dev/null 2>&1; then
+  wait_for_dfu 25 >/dev/null 2>&1; rc=$?
+  if (( rc == 20 )); then fail 'Оставьте подключённым только один Target Mac.'; return 20; fi
+  if (( rc != 0 )); then
     stage 'Повторная отправка команды DFU'
     output=$(priv_status dfu 2>&1) || { fail "$output"; return 9; }
     log "macvdmtool retry output:\n$output"

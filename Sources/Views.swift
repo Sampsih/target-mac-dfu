@@ -157,7 +157,7 @@ struct Sidebar: View {
 }
 
 struct ContentView: View {
-    @StateObject private var model = AppModel()
+    @ObservedObject private var model = AppModel.shared
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
@@ -194,10 +194,11 @@ struct ContentView: View {
             Button("OK", role: .cancel) { }
         } message: { Text(model.lastError ?? "") }
         .onChange(of: settings.demoMode) {
+            guard !model.controlsLocked else { return }
             Task { await model.refreshDevice(silent: false) }
         }
         .onChange(of: settings.language) {
-            guard !model.busy else { return }
+            guard !model.controlsLocked else { return }
             Task { await model.refreshDevice(silent: true) }
         }
     }
@@ -294,7 +295,7 @@ struct OverviewView: View {
                 ),
                 action: AnyView(Button(L10n.text("Обновить", "Refresh", model.language), systemImage: "arrow.clockwise") {
                     Task { await model.refreshDevice(silent: false) }
-                }.disabled(model.busy))
+                }.disabled(model.controlsLocked))
             )
 
             if model.toolStatus != nil, !model.cfgutilReady, !model.settings.demoMode {
@@ -320,7 +321,7 @@ struct OverviewView: View {
                 FirmwareList(model: model, compact: true)
                 HStack {
                     Button(L10n.text("Только скачать", "Download Only", model.language), systemImage: "arrow.down.circle") { model.downloadOnly() }
-                        .disabled(model.selectedFirmware == nil || model.downloads.phase.isActive || model.busy)
+                        .disabled(model.selectedFirmware == nil || model.controlsLocked)
                     Spacer()
                 }
             }
@@ -332,10 +333,7 @@ struct WorkflowProgressCard: View {
     @ObservedObject var model: AppModel
 
     private var currentStep: Int {
-        if model.isRecoveryRunning || model.sessionPhase == .completed { return 4 }
-        if model.selectedFirmware != nil { return 3 }
-        if model.dfuDetected { return 3 }
-        return 1
+        model.workflowStep
     }
 
     var body: some View {
@@ -395,22 +393,26 @@ struct PrimaryActionCard: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .tint(accent)
-                    .disabled(model.busy || model.downloads.phase.isActive)
+                    .disabled(model.controlsLocked)
     }
 
     private var kicker: String {
+        if model.sessionPhase == .completed { return L10n.text("Restore завершён", "Restore complete", model.language) }
+        if model.workflowStep == 2 { return L10n.text("Шаг 2 из 4", "Step 2 of 4", model.language) }
         if !model.dfuDetected { return L10n.text("Шаг 1 из 4", "Step 1 of 4", model.language) }
         if model.device == nil { return L10n.text("Нужен компонент Apple", "Apple component required", model.language) }
-        if model.selectedFirmware == nil { return L10n.text("Шаг 3 из 4", "Step 3 of 4", model.language) }
+        if model.workflowStep == 3 { return L10n.text("Шаг 3 из 4", "Step 3 of 4", model.language) }
         return L10n.text("Готово к шагу 4", "Ready for step 4", model.language)
     }
     private var title: String {
+        if model.sessionPhase == .completed { return model.status }
         if !model.dfuDetected { return L10n.text("Отправьте подключённый Mac в DFU", "Send the connected Mac to DFU", model.language) }
         if model.device == nil { return L10n.text("Установите Automation Tools", "Install Automation Tools", model.language) }
         if model.selectedFirmware == nil { return L10n.text("Выберите подходящую IPSW", "Choose a compatible IPSW", model.language) }
         return L10n.text("Проверьте выбор и запустите Restore", "Review and start Restore", model.language)
     }
     private var explanation: String {
+        if model.sessionPhase == .completed { return model.detail }
         if !model.dfuDetected {
             return L10n.text("Подключите Mac напрямую правильным USB-C портом. Приложение само отправит команду и проверит результат.", "Connect the Mac directly through the correct USB-C port. The app sends the command and verifies the result.", model.language)
         }
@@ -423,12 +425,14 @@ struct PrimaryActionCard: View {
         return L10n.text("Restore полностью сотрёт данные на подключённом Mac.", "Restore completely erases the connected Mac.", model.language)
     }
     private var buttonTitle: String {
+        if model.sessionPhase == .completed { return L10n.text("Инструкция Apple", "Apple Instructions", model.language) }
         if !model.dfuDetected { return L10n.text("Отправить Mac в DFU", "Send Mac to DFU", model.language) }
         if model.device == nil { return L10n.text("Открыть настройки", "Open Settings", model.language) }
         if model.selectedFirmware == nil { return L10n.text("Открыть IPSW", "Open IPSW Library", model.language) }
         return L10n.text("Перейти к Restore", "Continue to Restore", model.language)
     }
     private var buttonIcon: String {
+        if model.sessionPhase == .completed { return "book" }
         if !model.dfuDetected { return "power" }
         if model.device == nil { return "gearshape.fill" }
         if model.selectedFirmware == nil { return "books.vertical.fill" }
@@ -444,7 +448,8 @@ struct PrimaryActionCard: View {
         .accentColor
     }
     private func action() {
-        if !model.dfuDetected { model.enterDFU() }
+        if model.sessionPhase == .completed { model.openAppleDFUGuide() }
+        else if !model.dfuDetected { model.enterDFU() }
         else if model.device == nil { model.selection = .settings }
         else if model.selectedFirmware == nil { model.selection = .library }
         else { model.selection = .restore; model.runPreflightNow() }
@@ -470,8 +475,8 @@ struct DevicePortrait: View {
             .accessibilityHidden(true)
             Text(model.deviceName).font(.title3.weight(.semibold))
                 .multilineTextAlignment(.center)
-            Label(model.dfuDetected ? "DFU" : L10n.text("Не подключён", "Disconnected", model.language),
-                  systemImage: model.dfuDetected ? "checkmark.circle.fill" : "circle.dashed")
+            Label(model.sessionPhase == .completed ? L10n.text("Restore завершён", "Restore complete", model.language) : model.dfuDetected ? "DFU" : L10n.text("Не подключён", "Disconnected", model.language),
+                  systemImage: model.dfuDetected || model.sessionPhase == .completed ? "checkmark.circle.fill" : "circle.dashed")
                 .font(.callout.weight(.medium))
                 .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(Color.primary.opacity(0.05), in: Capsule())
@@ -503,7 +508,7 @@ struct DeviceSummaryCard: View {
                     InfoRow(title: "ECID", value: model.device?.maskedECID ?? "—")
                     InfoRow(
                         title: L10n.text("Режим", "Mode", model.language),
-                        value: model.device?.mode ?? L10n.text("Не подключён", "Disconnected", model.language),
+                        value: model.sessionPhase == .completed ? L10n.text("Restore завершён", "Restore complete", model.language) : model.device?.mode ?? L10n.text("Не подключён", "Disconnected", model.language),
                         accent: model.device == nil ? .secondary : .green
                     )
                 }
@@ -575,7 +580,7 @@ struct FirmwareList: View {
                     }
                     Spacer()
                     Button(L10n.text("Обновить", "Refresh", model.language), systemImage: "arrow.clockwise") { model.refreshFirmwares() }
-                        .disabled(model.busy || model.device == nil)
+                        .disabled(model.controlsLocked || model.device == nil)
                 }
                 if model.firmwares.isEmpty {
                     ContentUnavailableView(
@@ -631,7 +636,7 @@ struct FirmwareRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(model.downloads.phase.isActive)
+        .disabled(model.controlsLocked)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityLabel("macOS \(firmware.version), build \(firmware.build), \(firmware.sizeText)")
     }
@@ -651,9 +656,9 @@ struct QuickRecoveryCard: View {
                 Button(L10n.text("Запустить Restore", "Start Restore", model.language), systemImage: "externaldrive.badge.xmark") { model.requestRecovery() }
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .keyboardShortcut(.return, modifiers: [.command])
-                    .disabled(model.device == nil || model.selectedFirmware == nil || model.busy || model.downloads.phase.isActive)
+                    .disabled(!model.dfuDetected || model.device == nil || model.selectedFirmware == nil || model.controlsLocked)
                 Button(L10n.text("Только скачать", "Download Only", model.language), systemImage: "arrow.down.to.line") { model.downloadOnly() }
-                    .buttonStyle(.bordered).disabled(model.selectedFirmware == nil || model.downloads.phase.isActive)
+                    .buttonStyle(.bordered).disabled(model.selectedFirmware == nil || model.controlsLocked)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -687,7 +692,7 @@ struct DFUGuideView: View {
                         HStack {
                             Button(L10n.text("Отправить Mac в DFU", "Send Mac to DFU", model.language), systemImage: "power") { model.enterDFU() }
                                 .buttonStyle(.borderedProminent).controlSize(.large)
-                                .disabled(model.busy || model.dfuDetected)
+                        .disabled(model.controlsLocked || model.dfuDetected)
                             Button(L10n.text("Таблица DFU-портов Apple", "Apple DFU Port Table", model.language), systemImage: "safari") { model.openAppleDFUPortGuide() }
                             Button(L10n.text("Открыть Finder", "Open Finder", model.language), systemImage: "face.smiling") { model.openFinder() }
                         }
@@ -762,7 +767,7 @@ struct LibraryView: View {
                 subtitle: L10n.text("Совместимые образы из выбранного каталога для определённой модели.", "Model-compatible images from the selected device catalog.", model.language),
                 action: AnyView(HStack {
                     Button(L10n.text("Импорт IPSW", "Import IPSW", model.language), systemImage: "square.and.arrow.down") { model.importIPSW() }
-                    Button(L10n.text("Обновить", "Refresh", model.language), systemImage: "arrow.clockwise") { model.refreshFirmwares() }.disabled(model.device == nil)
+                    Button(L10n.text("Обновить", "Refresh", model.language), systemImage: "arrow.clockwise") { model.refreshFirmwares() }.disabled(model.device == nil || model.controlsLocked)
                 })
             )
             FirmwareList(model: model, compact: false)
@@ -823,16 +828,19 @@ struct DownloadsView: View {
                         if manager.phase == .downloading {
                             Button(L10n.text("Пауза", "Pause", model.language), systemImage: "pause.fill") { manager.pause() }
                                 .keyboardShortcut("p", modifiers: [.command])
+                                .disabled(model.busy)
                         } else if manager.phase == .paused {
                             Button(L10n.text("Продолжить", "Resume", model.language), systemImage: "play.fill") { manager.resume() }
                                 .buttonStyle(.borderedProminent).keyboardShortcut("p", modifiers: [.command])
+                                .disabled(model.busy)
                         }
                         if manager.phase == .downloading || manager.phase == .paused {
-                            Button(L10n.text("Отменить", "Cancel", model.language), systemImage: "xmark", role: .destructive) { manager.cancel() }
+                            Button(L10n.text("Отменить", "Cancel", model.language), systemImage: "xmark", role: .destructive) { model.cancelDownload() }
+                                .disabled(model.busy)
                         }
                         Spacer()
                         Button(L10n.text("Изменить папку…", "Change Folder…", model.language), systemImage: "folder.badge.gearshape") { model.settings.chooseDownloadDirectory() }
-                            .disabled(manager.phase.isActive)
+                            .disabled(model.controlsLocked)
                     }
                 }
                 .frame(minHeight: 178)
@@ -876,11 +884,11 @@ struct RecoveryView: View {
                     VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
                         Label(L10n.text("Restore — стереть и восстановить", "Restore — erase and reinstall", model.language), systemImage: "externaldrive.badge.xmark")
                             .font(.title3.bold()).foregroundStyle(.red)
-                        Text(L10n.text("Все данные на Target Mac будут удалены. После завершения Mac запустит Ассистент настройки.", "All data on the target Mac will be erased. Setup Assistant starts when complete.", model.language))
+                        Text(L10n.text("Все данные на Target Mac будут удалены. После Restore следуйте инструкциям на его экране; Mac с T2 может потребовать установки macOS через интернет-восстановление.", "All data on the target Mac will be erased. After Restore, follow its onscreen instructions; a T2 Mac may need macOS installation through Internet Recovery.", model.language))
                             .foregroundStyle(.secondary)
                         Button(L10n.text("Запустить Restore", "Start Restore", model.language), systemImage: "externaldrive.badge.xmark") { model.requestRecovery() }
                             .buttonStyle(.borderedProminent).controlSize(.large)
-                            .disabled(model.device == nil || model.selectedFirmware == nil || model.busy || model.downloads.phase.isActive)
+                            .disabled(!model.dfuDetected || model.device == nil || model.selectedFirmware == nil || model.controlsLocked)
                     }
                 }
                 GlassCard {
@@ -911,7 +919,7 @@ struct RecoveryView: View {
                         Button(L10n.text("Проверить готовность", "Run Readiness Check", model.language), systemImage: "checkmark.shield") {
                             model.runPreflightNow()
                         }
-                        .disabled(model.device == nil || model.selectedFirmware == nil || model.preflightRunning)
+                        .disabled(!model.dfuDetected || model.device == nil || model.selectedFirmware == nil || model.controlsLocked)
                         Divider()
                         Text(L10n.text("Во время активного RecoveryJob кнопка отмены намеренно отсутствует: cfgutil должен завершить безопасную точку сам.", "During an active RecoveryJob there is intentionally no cancel button; cfgutil must reach its own safe point.", model.language)).font(.caption).foregroundStyle(.secondary)
                     }
@@ -924,6 +932,16 @@ struct RecoveryView: View {
                         Label(model.status, systemImage: "wrench.and.screwdriver.fill").font(.title3.bold())
                         ProgressView(value: model.recoveryProgress)
                         Text("\(Int(model.recoveryProgress * 100))% · \(model.recoveryStage.isEmpty ? model.detail : model.recoveryStage)").monospacedDigit()
+                    }
+                }
+            }
+            if model.sessionPhase == .completed || model.sessionPhase == .recoveryNeeded {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label(model.status, systemImage: model.sessionPhase == .completed ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .font(.title3.bold())
+                        Text(model.detail).textSelection(.enabled)
+                        Button(L10n.text("Инструкция Apple", "Apple Instructions", model.language)) { model.openAppleDFUGuide() }
                     }
                 }
             }
@@ -1009,16 +1027,22 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     }
 }
 
+@MainActor
+private final class SettingsSelection: ObservableObject {
+    @Published var section: SettingsSection
+    init(section: SettingsSection) { self.section = section }
+}
+
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var updateChecker: UpdateChecker
-    @State private var section: SettingsSection = .general
+    @StateObject private var navigation: SettingsSelection
 
     init(model: AppModel) {
         self.model = model
         self._updateChecker = ObservedObject(wrappedValue: model.updateChecker)
-        self._section = State(initialValue: model.cfgutilReady ? .general : .support)
+        self._navigation = StateObject(wrappedValue: SettingsSelection(section: model.cfgutilReady ? .general : .support))
     }
 
     var body: some View {
@@ -1028,7 +1052,7 @@ struct SettingsView: View {
                 subtitle: L10n.text("Только основные параметры — без лишней сложности.", "Only the essential options, kept simple.", settings.language),
                 action: nil
             )
-            Picker("", selection: $section) {
+            Picker("", selection: $navigation.section) {
                 ForEach(SettingsSection.allCases) { item in
                     Label(item.title(settings.language), systemImage: item.icon).tag(item)
                 }
@@ -1037,12 +1061,13 @@ struct SettingsView: View {
             .labelsHidden()
             .frame(maxWidth: 560)
 
-            switch section {
+            switch navigation.section {
             case .general: generalSettings
             case .firmware: firmwareSettings
             case .support: supportSettings
             }
         }
+        .disabled(model.controlsLocked)
     }
 
     @ViewBuilder private var generalSettings: some View {
