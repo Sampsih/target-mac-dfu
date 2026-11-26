@@ -271,7 +271,11 @@ struct ToolSetupCard: View {
         if model.toolStatus?.configuratorInstalled == true {
             return L10n.text("Откройте Configurator → Install Automation Tools…, подтвердите пароль администратора.", "Open Configurator → Install Automation Tools… and approve the administrator prompt.", model.language)
         }
-        return L10n.text("Установите бесплатный Apple Configurator из Mac App Store.", "Install the free Apple Configurator from the Mac App Store.", model.language)
+        return L10n.text(
+            "Установите Apple Configurator из Mac App Store. Текущая версия требует macOS 15.7 или новее. Если установить её не получается, воспользуйтесь восстановлением через Finder.",
+            "Install Apple Configurator from the Mac App Store. The current version requires macOS 15.7 or later. If you cannot install it, use Finder to recover the Mac.",
+            model.language
+        )
     }
 
     private var actionTitle: String {
@@ -685,14 +689,19 @@ struct DFUGuideView: View {
                             : L10n.text("Mac уже находится в DFU", "Mac Is Already in DFU", model.language))
                             .font(.title3.bold())
                         Text(L10n.text(
-                            "Подключите Target Mac напрямую к Host Mac. Кабель вставьте в DFU-порт Target Mac — нужный порт можно проверить по таблице Apple. Host Mac должен быть на Apple silicon.",
-                            "Connect the target Mac directly to the host Mac. Use the target Mac DFU port, shown in Apple's table. The host Mac must use Apple silicon.",
+                            "Подключите Mac напрямую кабелем USB-C с передачей данных и зарядкой. Кабель Thunderbolt 3 не подходит. На Target Mac используйте DFU-порт из таблицы Apple. Для кнопки DFU нужен Host Mac с Apple silicon.",
+                            "Connect the Macs directly with a USB-C cable that supports data and charging. Avoid Thunderbolt 3 cables. Use the target Mac's DFU port shown in Apple's table. One-click DFU requires an Apple silicon host.",
                             model.language
                         )).foregroundStyle(.secondary)
+                        Text(L10n.text(
+                            "Подключите Host Mac к питанию и интернету. На Target Mac освободите остальные USB-порты. Для питания ноутбука используйте MagSafe, если он есть.",
+                            "Connect the host Mac to power and the internet. Unplug other USB devices from the target Mac. If the target laptop has MagSafe, use it for power.",
+                            model.language
+                        )).font(.callout).foregroundStyle(.secondary)
                         HStack {
                             Button(L10n.text("Отправить Mac в DFU", "Send Mac to DFU", model.language), systemImage: "power") { model.enterDFU() }
                                 .buttonStyle(.borderedProminent).controlSize(.large)
-                        .disabled(model.controlsLocked || model.dfuDetected)
+                                .disabled(model.controlsLocked || model.dfuDetected)
                             Button(L10n.text("Таблица DFU-портов Apple", "Apple DFU Port Table", model.language), systemImage: "safari") { model.openAppleDFUPortGuide() }
                             Button(L10n.text("Открыть Finder", "Open Finder", model.language), systemImage: "face.smiling") { model.openFinder() }
                         }
@@ -708,7 +717,11 @@ struct DFUGuideView: View {
                 VStack(alignment: .leading, spacing: InterfaceMetrics.controlSpacing) {
                     Label(L10n.text("Запасной вариант: ручной вход в DFU", "Fallback: Manual DFU Entry", model.language), systemImage: "hand.raised.fill")
                         .font(.title3.bold())
-                    Text(L10n.text("Используйте только если кнопка выше не сработала. Сначала подключите кабель в правильный DFU-порт.", "Use this only if the button above fails. First connect the cable to the correct DFU port.", model.language))
+                    Text(L10n.text(
+                        "Если кнопка выше не сработала, используйте шаги для своей модели. На ноутбуке нажимайте клавиши на встроенной клавиатуре.",
+                        "If the button above fails, follow the steps for your model. On a laptop, use the built-in keyboard.",
+                        model.language
+                    ))
                         .foregroundStyle(.secondary)
                     HStack(alignment: .top, spacing: InterfaceMetrics.sectionSpacing) {
                         manualCard(
@@ -724,6 +737,11 @@ struct DFUGuideView: View {
                             L10n.text("1. Отключите Target Mac от питания.\n2. Нажмите и удерживайте кнопку Power.\n3. Не отпуская Power, подключите питание.\n4. Продолжайте удерживать Power до 10 секунд, пока DFU не появится в Finder.", "1. Unplug the target Mac from power.\n2. Press and hold Power.\n3. While holding Power, reconnect power.\n4. Keep holding Power for up to 10 seconds until DFU appears in Finder.", model.language)
                         )
                     }
+                    Text(L10n.text(
+                        "Если Host Mac попросит разрешить подключение аксессуара, отпустите удерживаемые клавиши на Target Mac, разблокируйте Host Mac при необходимости и нажмите «Разрешить». В режиме DFU экран Target Mac остаётся чёрным.",
+                        "If the host Mac asks to allow the accessory, release the keys you are holding on the target Mac, unlock the host Mac if needed, and click Allow. The target Mac screen stays blank in DFU.",
+                        model.language
+                    )).font(.callout).foregroundStyle(.secondary)
                     Link(L10n.text("Полная официальная инструкция Apple", "Full Official Apple Guide", model.language), destination: URL(string: "https://support.apple.com/108900")!)
                 }
             }

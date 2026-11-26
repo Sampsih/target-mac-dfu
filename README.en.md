@@ -1,106 +1,51 @@
 # Target Mac DFU
 
-**English** · [Русский](README.md)
+[Русский](README.md) · [Download](https://github.com/Sampsih/target-mac-dfu/releases/latest) · [Changelog](CHANGELOG.md)
 
-[![Build](https://github.com/Sampsih/target-mac-dfu/actions/workflows/build.yml/badge.svg)](https://github.com/Sampsih/target-mac-dfu/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/Sampsih/target-mac-dfu)](https://github.com/Sampsih/target-mac-dfu/releases/latest)
-![macOS](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+Target Mac DFU helps you restore a Mac that won't start. Run the app on a second Mac, put the connected Mac into DFU mode, and choose an IPSW firmware file. The app downloads the file if needed and checks it before restoring the Mac.
 
-A macOS utility that puts a connected Mac into DFU mode with one click, finds and downloads a compatible IPSW, and performs a full Restore.
+![Target Mac DFU running in demo mode](docs/images/overview.png)
 
-![Target Mac DFU overview](docs/images/overview.png)
+## What you need
 
-> [!CAUTION]
-> Restore completely erases the target Mac. Confirm that you selected the correct computer and backed up all important data before proceeding.
-
-## Features
-
-- one-click DFU entry through `macvdmtool`;
-- DFU detection with Model Identifier and ECID verification;
-- signed IPSW discovery plus a separate beta firmware source;
-- download progress, speed, pause and resume;
-- remaining-time estimate and deep IPSW validation before Restore;
-- configurable IPSW storage folder;
-- full Restore with two-step confirmation;
-- overlapping-operation and normal-quit protection during DFU/Restore; prevention of host idle sleep;
-- operation history, logs and a diagnostic support bundle;
-- Russian, English, French, German, and Spanish interface;
-- demo mode that does not require a connected Mac.
-- a compact interface with Liquid Glass navigation on macOS 26, quiet content cards, and reduced-transparency support on macOS 14 and later.
-
-Version 1.4 puts the connected Mac and one next action at the center of the overview. See [the macOS 27-inspired design notes](docs/DESIGN-macOS27.md).
-
-## Screenshots
-
-| One-click DFU | IPSW sources and settings |
-| --- | --- |
-| ![Automatic DFU](docs/images/dfu.png) | ![Target Mac DFU settings](docs/images/settings.png) |
+- An Apple silicon host Mac running macOS 14 or later.
+- A target Mac with Apple silicon or an Apple T2 chip.
+- A USB-C cable that supports data and charging. Connect it directly to the target Mac's [DFU port](https://support.apple.com/120694). Avoid Thunderbolt 3 cables.
+- Apple Configurator with Automation Tools for Restore. The current Mac App Store version requires macOS 15.7 or later. Setting up one-click DFU may require Xcode Command Line Tools.
 
 ## Quick start
 
-1. Download `Target-Mac-DFU-1.4.1.zip` from **Releases**.
-2. Move `Target Mac DFU.app` to **Applications**.
-3. Install Apple Configurator and Automation Tools if prompted.
-4. Connect the host Mac directly to the correct DFU port on the target Mac with a data-capable USB-C cable.
-5. Open **DFU Mode** and click **Send Mac to DFU**.
-6. After the model and ECID appear, select an IPSW, click **Continue to Restore**, review readiness, and click **Start Restore**.
-7. Do not disconnect the cable or power until the operation finishes.
+1. Download and unzip the app, then move it to **Applications**. If prompted, install Apple Configurator and Automation Tools.
+2. Connect the two Macs. Open **DFU Mode** and click **Send Mac to DFU**. If the button doesn't work, follow the manual steps on the same screen.
+3. Check the model and ECID, select an IPSW, and click **Continue to Restore**.
+4. Review the readiness checks, click **Start Restore**, and confirm. Leave the cable and power connected until the restore finishes.
 
-See the Russian documentation for [installation](docs/INSTALLATION.md), the [user guide](docs/USER_GUIDE.md), and [troubleshooting](docs/TROUBLESHOOTING.md).
+> [!CAUTION]
+> Restore erases all data on the target Mac. Check which Mac is connected and make sure you have a backup before proceeding.
 
-## Requirements
+You can download firmware separately, pause and resume downloads, choose where to store files, and add beta firmware or a custom catalog. Try demo mode to explore the app without a second Mac.
 
-- Apple silicon host Mac;
-- macOS 14 or later;
-- Apple Configurator with Automation Tools (`cfgutil`);
-- Xcode Command Line Tools for automatic `macvdmtool` installation;
-- a data-capable USB-C cable connected directly without a hub;
-- the correct DFU port on the target Mac.
+<details>
+<summary>More screenshots</summary>
 
-## Build from source
+![Manual and automatic DFU entry](docs/images/dfu.png)
 
-```bash
-./scripts/build.sh
-```
+![IPSW source settings](docs/images/settings.png)
 
-The application is created at `dist/Target Mac DFU.app`. To package it:
+</details>
 
-```bash
-./scripts/package.sh
-```
+## Documentation
 
-## Firmware sources
+[Installation](docs/INSTALLATION.md) · [User guide](docs/USER_GUIDE.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) (in Russian) · [Custom IPSW catalogs](docs/CUSTOM_CATALOG.en.md)
 
-The app supports IPSW.me, a custom JSON endpoint, a local catalog, and the IPSWBeta.dev beta catalog. The beta catalog accepts only links hosted on official Apple CDNs. Apple tools make the final firmware eligibility decision during Restore.
-
-For internal and local sources, see the [custom catalog guide](docs/CUSTOM_CATALOG.en.md) and the [ready-to-edit example](examples/custom-catalog.json).
-
-## Security and limitations
-
-- this is an independent project and is not affiliated with Apple Inc.;
-- the administrator password is handled by the macOS system dialog and is never stored;
-- there is no telemetry or background upload of user data;
-- automatic DFU depends on the model, cable, port, and state of both Macs;
-- Apple, macOS, Mac, and Apple Configurator are trademarks of Apple Inc.
-
-Please follow [SECURITY.md](SECURITY.md) to report a vulnerability.
+To build from source, run `./scripts/build.sh`. [Contributing](CONTRIBUTING.md) · [MIT license](LICENSE)
 
 ## Support the project
 
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_a_Coffee-support-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/sampsih)
-[![CloudTips](https://img.shields.io/badge/CloudTips-support-00AEEF)](https://pay.cloudtips.ru/p/56c624cb)
+[Buy Me a Coffee](https://buymeacoffee.com/sampsih) · [CloudTips](https://pay.cloudtips.ru/p/56c624cb) · [TON](https://tonviewer.com/UQBDpkQH_ryzYKm5iiBQLuFz32SJllk4WI3drZfjQCYFHKX4)
 
 TON mainnet address:
 
 ```text
 UQBDpkQH_ryzYKm5iiBQLuFz32SJllk4WI3drZfjQCYFHKX4
 ```
-
-[Open a transfer in a TON wallet](ton://transfer/UQBDpkQH_ryzYKm5iiBQLuFz32SJllk4WI3drZfjQCYFHKX4?text=Thanks%20for%20Target%20Mac%20DFU) · [Verify the address in TON Viewer](https://tonviewer.com/UQBDpkQH_ryzYKm5iiBQLuFz32SJllk4WI3drZfjQCYFHKX4)
-
-Always compare the address shown in your wallet with the address above before confirming a transfer.
-
-## License
-
-The project is available under the [MIT License](LICENSE). The optionally downloaded `macvdmtool` project has its own license and is maintained by its respective authors.

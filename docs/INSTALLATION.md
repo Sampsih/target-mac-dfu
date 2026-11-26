@@ -2,16 +2,17 @@
 
 ## Готовая версия
 
-1. Откройте страницу последнего релиза GitHub.
-2. Скачайте `Target-Mac-DFU-1.4.1.zip`.
-3. Распакуйте архив и перенесите `Target Mac DFU.app` в `/Applications`.
-4. При первом запуске нажмите по приложению с удержанием Control и выберите **Открыть**.
+1. Скачайте архив приложения со страницы [последнего релиза GitHub](https://github.com/Sampsih/target-mac-dfu/releases/latest).
+2. Распакуйте архив и перенесите `Target Mac DFU.app` в `/Applications`.
+3. Откройте приложение. Если macOS блокирует первый запуск и вы доверяете скачанному архиву, выберите **Системные настройки → Конфиденциальность и безопасность → Всё равно открыть**. [Инструкция Apple по первому запуску](https://support.apple.com/ru-ru/102445).
 
 Приложение распространяется без сертификата Apple Developer. Поэтому macOS может запросить дополнительное подтверждение первого запуска.
 
 ## Apple Configurator и Automation Tools
 
-Для обнаружения DFU и Restore нужен `cfgutil`, который устанавливается вместе с Automation Tools для Apple Configurator. Если приложение показывает сообщение «cfgutil не найден», установите Apple Configurator, затем откройте в нём установку Automation Tools и снова запустите проверку в настройках Target Mac DFU.
+Для чтения модели и ECID и запуска Restore в Target Mac DFU нужен `cfgutil`. Если приложение его не находит, установите Apple Configurator, выберите в его меню **Install Automation Tools…**, затем нажмите **Проверить снова** в Target Mac DFU.
+
+Target Mac DFU запускается на Mac с Apple silicon и macOS 14 или новее. Для установки текущей версии Apple Configurator 2.21 нужна macOS 15.7 или новее. Если совместимого Configurator нет, воспользуйтесь штатным восстановлением через Finder, которое Apple описывает для Host Mac с macOS 14 или новее. [Apple Configurator в Mac App Store](https://apps.apple.com/us/app/apple-configurator/id1037126344) · [Штатное восстановление](https://support.apple.com/en-us/108900).
 
 ## macvdmtool
 
