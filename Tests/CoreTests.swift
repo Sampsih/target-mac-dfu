@@ -57,6 +57,11 @@ struct CoreTests {
                 "All data on the target Mac will be erased. After Restore, follow its onscreen instructions; a T2 Mac may need macOS installation through Internet Recovery.",
                 "Apple Instructions",
                 "Step 2 of 4",
+                "Install Apple Configurator from the Mac App Store. The current version requires macOS 15.7 or later. If you cannot install it, use Finder to recover the Mac.",
+                "Connect the Macs directly with a USB-C cable that supports data and charging. Avoid Thunderbolt 3 cables. Use the target Mac's DFU port shown in Apple's table. One-click DFU requires an Apple silicon host.",
+                "If the button above fails, follow the steps for your model. On a laptop, use the built-in keyboard.",
+                "If the host Mac asks to allow the accessory, release the keys you are holding on the target Mac, unlock the host Mac if needed, and click Allow. The target Mac screen stays blank in DFU.",
+                "Connect the host Mac to power and the internet. Unplug other USB devices from the target Mac. If the target laptop has MagSafe, use it for power.",
             ]
             try expect(LocalizationCatalog.coverage(for: language, keys: safetyKeys) == 1, "all new safety messages are translated for \(language.rawValue)")
             let settings = L10n.text("Настройки", "Settings", language)

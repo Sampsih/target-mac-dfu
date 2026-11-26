@@ -75,7 +75,7 @@ final class AppModel: ObservableObject {
             firmwareReady: selectedFirmware.map { isDownloaded($0) } == true && !downloads.phase.isActive)
     }
     var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.1"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.2"
     }
     var preflightReady: Bool {
         !preflightChecks.isEmpty && !preflightChecks.contains(where: \.blocksRestore)

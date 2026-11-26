@@ -1,110 +1,51 @@
 # Target Mac DFU
 
-[English](README.en.md) · **Русский**
+[English](README.en.md) · [Скачать приложение](https://github.com/Sampsih/target-mac-dfu/releases/latest) · [Журнал изменений](CHANGELOG.md)
 
-[![Build](https://github.com/Sampsih/target-mac-dfu/actions/workflows/build.yml/badge.svg)](https://github.com/Sampsih/target-mac-dfu/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/Sampsih/target-mac-dfu)](https://github.com/Sampsih/target-mac-dfu/releases/latest)
-![macOS](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+Target Mac DFU помогает восстановить Mac, который перестал загружаться. Запустите приложение на втором Mac, переведите подключённый компьютер в DFU и выберите прошивку IPSW. Приложение скачает её при необходимости и проверит перед восстановлением.
 
-Приложение для macOS, которое помогает отправить подключённый Mac в режим DFU одной кнопкой, подобрать и скачать IPSW, а затем выполнить полный Restore.
+![Главное окно Target Mac DFU в демо-режиме](docs/images/overview.png)
 
-![Обзор Target Mac DFU](docs/images/overview.png)
+## Что понадобится
+
+- Рабочий Mac с Apple silicon и macOS 14 или новее.
+- Восстанавливаемый Mac с Apple silicon или чипом T2.
+- Кабель USB-C с передачей данных и зарядкой. Подключайте его напрямую к [DFU-порту](https://support.apple.com/120694). Кабель Thunderbolt 3 для этой операции не подходит.
+- Apple Configurator с Automation Tools для Restore. Версия из Mac App Store требует macOS 15.7 или новее. Для автоматического входа в DFU могут понадобиться Xcode Command Line Tools.
+
+## Как пользоваться
+
+1. Скачайте ZIP, распакуйте его и перенесите приложение в папку **Программы**. Если приложение попросит, установите Apple Configurator и Automation Tools.
+2. Соедините два Mac. В разделе **Режим DFU** нажмите **Отправить Mac в DFU**. Если кнопка не сработает, в этом же разделе есть ручная инструкция.
+3. Сверьте модель и ECID, выберите IPSW и нажмите **Перейти к Restore**.
+4. Проверьте готовность, нажмите **Запустить Restore** и подтвердите операцию. Дождитесь завершения, оставив питание и кабель подключёнными.
 
 > [!CAUTION]
-> Restore полностью удаляет данные с восстанавливаемого Mac. Перед запуском убедитесь, что выбран правильный компьютер и важные данные сохранены.
+> Restore стирает все данные на восстанавливаемом Mac. Перед запуском проверьте, какой Mac подключён, и убедитесь, что у вас есть резервная копия.
 
-## Возможности
+Прошивку можно скачать отдельно, поставить загрузку на паузу и продолжить позже. В настройках можно выбрать папку, включить бета-версии или подключить свой каталог. Демо-режим позволяет посмотреть приложение без второго Mac.
 
-- автоматическая отправка Target Mac в DFU через `macvdmtool`;
-- проверка появления устройства, Model Identifier и ECID;
-- поиск подписанных IPSW и отдельный источник beta-версий;
-- загрузка IPSW с процентом, скоростью, паузой и продолжением;
-- расчёт оставшегося времени и глубокая проверка IPSW перед Restore;
-- выбор папки для хранения IPSW;
-- полный Restore с двойным подтверждением;
-- блокировка повторных операций и штатного выхода во время DFU/Restore; защита Host Mac от автоматического сна;
-- история операций, журналы и диагностический архив;
-- интерфейс на русском, английском, французском, немецком и испанском;
-- демо-режим для знакомства без подключённого Mac.
-- компактный интерфейс: Liquid Glass в навигации на macOS 26, спокойные карточки и поддержка уменьшения прозрачности на macOS 14 и новее.
+<details>
+<summary>Ещё скриншоты</summary>
 
-В версии 1.4 главный экран построен вокруг подключённого Mac и одного следующего действия. Подробнее: [дизайн в стиле macOS 27](docs/DESIGN-macOS27.md).
+![Ручной и автоматический вход в DFU](docs/images/dfu.png)
 
-## Скриншоты
+![Настройки источников IPSW](docs/images/settings.png)
 
-| DFU одним нажатием | Настройки и источники IPSW |
-| --- | --- |
-| ![Автоматический DFU](docs/images/dfu.png) | ![Настройки Target Mac DFU](docs/images/settings.png) |
+</details>
 
-## Быстрый старт
+## Документация
 
-1. Скачайте `Target-Mac-DFU-1.4.1.zip` из раздела **Releases**.
-2. Переместите `Target Mac DFU.app` в папку **Applications**.
-3. Установите Apple Configurator и Automation Tools, если приложение попросит.
-4. Подключите Host Mac к правильному DFU-порту Target Mac напрямую USB-C кабелем.
-5. Откройте **Режим DFU** и нажмите **Отправить Mac в DFU**.
-6. После появления модели и ECID выберите IPSW, нажмите **Перейти к Restore**, проверьте готовность и нажмите **Запустить Restore**.
-7. Не отключайте кабель и питание до завершения операции.
+[Установка](docs/INSTALLATION.md) · [Руководство](docs/USER_GUIDE.md) · [Решение проблем](docs/TROUBLESHOOTING.md) · [Свой каталог IPSW](docs/CUSTOM_CATALOG.md)
 
-Подробности: [установка](docs/INSTALLATION.md) · [руководство пользователя](docs/USER_GUIDE.md) · [решение проблем](docs/TROUBLESHOOTING.md)
-
-## Требования
-
-- Host Mac с Apple silicon;
-- macOS 14 или новее;
-- Apple Configurator с Automation Tools (`cfgutil`);
-- Xcode Command Line Tools для автоматической установки `macvdmtool`;
-- USB-C кабель с передачей данных и прямое подключение без хаба;
-- правильный DFU-порт восстанавливаемого Mac.
-
-## Сборка из исходников
-
-```bash
-./scripts/build.sh
-```
-
-Готовое приложение появится в `dist/Target Mac DFU.app`. Для создания ZIP:
-
-```bash
-./scripts/package.sh
-```
-
-## Источники прошивок
-
-Приложение поддерживает IPSW.me, пользовательский HTTPS JSON-каталог, локальный каталог и beta-каталог IPSWBeta.dev. Для beta-каталога принимаются только ссылки на официальные CDN Apple. Фактическую возможность установки прошивки окончательно проверяют инструменты Apple во время Restore.
-
-Для внутреннего или локального источника используйте [инструкцию по собственному JSON-каталогу](docs/CUSTOM_CATALOG.md) и [готовый файл-пример](examples/custom-catalog.json).
-
-## Безопасность и ограничения
-
-- приложение не является продуктом Apple и не связано с Apple Inc.;
-- пароль администратора обрабатывается системным окном macOS и не сохраняется;
-- телеметрии и фоновой отправки пользовательских данных нет;
-- автоматический DFU зависит от модели, кабеля, порта и состояния обоих Mac;
-- названия Apple, macOS, Mac и Apple Configurator являются товарными знаками Apple Inc.
-
-О найденной уязвимости сообщайте по инструкции в [SECURITY.md](SECURITY.md).
+Для сборки из исходников запустите `./scripts/build.sh`. [Как внести изменения](CONTRIBUTING.md) · [Лицензия MIT](LICENSE)
 
 ## Поддержать проект
 
-Если Target Mac DFU оказался полезен, разработку можно поддержать любым удобным способом.
+[Buy Me a Coffee](https://buymeacoffee.com/sampsih) · [CloudTips](https://pay.cloudtips.ru/p/56c624cb) · [TON](https://tonviewer.com/UQBDpkQH_ryzYKm5iiBQLuFz32SJllk4WI3drZfjQCYFHKX4)
 
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_a_Coffee-поддержать-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/sampsih)
-[![CloudTips](https://img.shields.io/badge/CloudTips-поддержать-00AEEF)](https://pay.cloudtips.ru/p/56c624cb)
-
-### TON (Gram)
-
-Mainnet-адрес:
+Адрес для перевода в сети TON:
 
 ```text
 UQBDpkQH_ryzYKm5iiBQLuFz32SJllk4WI3drZfjQCYFHKX4
 ```
-
-[Открыть перевод в TON-кошельке](ton://transfer/UQBDpkQH_ryzYKm5iiBQLuFz32SJllk4WI3drZfjQCYFHKX4?text=Thanks%20for%20Target%20Mac%20DFU) · [Проверить адрес в TON Viewer](https://tonviewer.com/UQBDpkQH_ryzYKm5iiBQLuFz32SJllk4WI3drZfjQCYFHKX4)
-
-Перед подтверждением перевода обязательно сверьте адрес в кошельке с указанным выше.
-
-## Лицензия
-
-Исходный код распространяется по лицензии [MIT](LICENSE). Загружаемый при необходимости проект `macvdmtool` имеет собственную лицензию и сопровождается отдельно его авторами.
